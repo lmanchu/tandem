@@ -1,8 +1,19 @@
-# Veda-Iris Handoff Document - AI Collaboration Platform
+# Veda-Iris Handoff Document - Tandem
 
-**Project**: AI-Native Collaboration Platform
+**Project**: Tandem - AI-Native Collaboration Platform
+**Tagline**: "Work in tandem with AI"
 **Date**: 2025-12-05
 **Sprint**: Weekend Side Project (MVP)
+
+---
+
+## 🔔 UPDATE (2025-12-05 21:45)
+
+**專案正式命名為 Tandem！**
+
+**Veda**: 繼續在當前目錄 (`ai-collab/`) 完成開發，改名由 Iris 統一處理。技術規格不變。
+
+詳見：`PROJECT-UPDATE.md`
 
 ---
 

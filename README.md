@@ -1,8 +1,8 @@
-# AI-Native Collaboration Platform
+# Tandem
 
 > The first workspace designed for humans and AI to work together.
 
-**Tagline**: "Dropbox for Human-AI Teams"
+**Tagline**: "Work in tandem with AI"
 
 ---
 
@@ -44,7 +44,7 @@
               ↕ (HTTP API)
 ┌─────────────────────────────────────┐
 │         CLI Tool (Bun)              │
-│  - collab read/write/list           │
+│  - tandem read/write/list           │
 │  - Auto tag as AI commit            │
 └─────────────────────────────────────┘
 ```
@@ -54,7 +54,7 @@
 ## 📦 Project Structure
 
 ```
-ai-collab/
+tandem/
 ├── frontend/          # React + shadcn/ui (Veda)
 ├── backend/           # Hono + Bun (Iris)
 ├── cli/               # CLI tool (Iris)
@@ -95,10 +95,10 @@ bun install
 bun link
 
 # Usage
-collab init
-collab list
-collab read <file>
-collab write <file> <content>
+tandem init
+tandem list
+tandem read <file>
+tandem write <file> <content>
 ```
 
 ---
@@ -170,4 +170,3 @@ MIT
 **Status**: 🚧 Weekend Side Project (MVP in progress)
 
 *Last Updated: 2025-12-05*
-# Test update
