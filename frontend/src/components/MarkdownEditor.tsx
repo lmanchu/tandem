@@ -1,37 +1,39 @@
-import { useEffect, useState, useCallback } from "react"
-import CodeMirror from "@uiw/react-codemirror"
-import { markdown, markdownLanguage } from "@codemirror/lang-markdown"
-import { languages } from "@codemirror/language-data"
+import { useEffect, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import { useAppStore } from "@/store/useAppStore"
-import { Loader2 } from "lucide-react"
-// import { cn } from "@/lib/utils"
+import { useYjsCodeMirror } from "@/hooks/useYjsCodeMirror"
+import { Loader2, Users } from "lucide-react"
 
 export function MarkdownEditor() {
     const { currentFile, fileContent, saveFile, isSaving } = useAppStore();
     const [localContent, setLocalContent] = useState("");
 
+    // Use Yjs CodeMirror for real-time collaboration
+    const { editorRef, isConnected } = useYjsCodeMirror({
+        filePath: currentFile?.path || null,
+        initialContent: fileContent,
+        onContentChange: (content) => {
+            setLocalContent(content);
+        },
+    });
+
     // Sync local content with store content when file changes
     useEffect(() => {
         setLocalContent(fileContent);
-    }, [fileContent, currentFile]);
+    }, [fileContent]);
 
-    // Debounced save
+    // Debounced save to Git (for snapshots)
     useEffect(() => {
         if (!currentFile) return;
 
         const timer = setTimeout(() => {
-            if (localContent !== fileContent) {
+            if (localContent !== fileContent && localContent.length > 0) {
                 saveFile(localContent);
             }
-        }, 2000);
+        }, 5000); // 5 seconds debounce for Git snapshots
 
         return () => clearTimeout(timer);
     }, [localContent, fileContent, currentFile, saveFile]);
-
-    const handleChange = useCallback((val: string) => {
-        setLocalContent(val);
-    }, []);
 
     if (!currentFile) {
         return (
@@ -48,7 +50,16 @@ export function MarkdownEditor() {
                     <span className="font-medium text-sm">{currentFile.name}</span>
                     <span className="text-xs text-muted-foreground opacity-60">{currentFile.path}</span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
+                    {/* Collaboration status */}
+                    {isConnected && (
+                        <div className="flex items-center gap-1.5 text-xs text-blue-600">
+                            <Users className="h-3 w-3" />
+                            <span>Live</span>
+                        </div>
+                    )}
+
+                    {/* Save status */}
                     {isSaving ? (
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                             <Loader2 className="h-3 w-3 animate-spin" />
@@ -61,41 +72,12 @@ export function MarkdownEditor() {
             </div>
 
             <div className="flex-1 grid grid-cols-2 overflow-hidden">
-                {/* Editor */}
+                {/* Editor with Yjs collaboration */}
                 <div className="border-r overflow-auto relative">
-                    <CodeMirror
-                        value={localContent}
-                        height="100%"
-                        extensions={[markdown({ base: markdownLanguage, codeLanguages: languages })]}
-                        onChange={handleChange}
-                        theme="light" // Or 'dark' based on system
-                        className="h-full text-base"
-                        basicSetup={{
-                            lineNumbers: true,
-                            highlightActiveLineGutter: true,
-                            highlightSpecialChars: true,
-                            history: true,
-                            foldGutter: true,
-                            drawSelection: true,
-                            dropCursor: true,
-                            allowMultipleSelections: true,
-                            indentOnInput: true,
-                            syntaxHighlighting: true,
-                            bracketMatching: true,
-                            closeBrackets: true,
-                            autocompletion: true,
-                            rectangularSelection: true,
-                            crosshairCursor: true,
-                            highlightActiveLine: true,
-                            highlightSelectionMatches: true,
-                            closeBracketsKeymap: true,
-                            defaultKeymap: true,
-                            searchKeymap: true,
-                            historyKeymap: true,
-                            foldKeymap: true,
-                            completionKeymap: true,
-                            lintKeymap: true,
-                        }}
+                    <div
+                        ref={editorRef}
+                        className="h-full w-full [&_.cm-editor]:h-full [&_.cm-scroller]:h-full"
+                        style={{ height: '100%' }}
                     />
                 </div>
 
