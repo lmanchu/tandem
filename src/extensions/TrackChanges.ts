@@ -57,92 +57,92 @@ export const TrackChanges = Extension.create<TrackChangesOptions, TrackChangesSt
     return {
       toggleTrackChanges:
         () =>
-        ({ editor }) => {
-          this.storage.enabled = !this.storage.enabled;
-          editor.view.dispatch(editor.state.tr);
-          return true;
-        },
+          ({ editor }) => {
+            this.storage.enabled = !this.storage.enabled;
+            editor.view.dispatch(editor.state.tr);
+            return true;
+          },
 
       enableTrackChanges:
         () =>
-        ({ editor }) => {
-          this.storage.enabled = true;
-          editor.view.dispatch(editor.state.tr);
-          return true;
-        },
+          ({ editor }) => {
+            this.storage.enabled = true;
+            editor.view.dispatch(editor.state.tr);
+            return true;
+          },
 
       disableTrackChanges:
         () =>
-        ({ editor }) => {
-          this.storage.enabled = false;
-          editor.view.dispatch(editor.state.tr);
-          return true;
-        },
+          ({ editor }) => {
+            this.storage.enabled = false;
+            editor.view.dispatch(editor.state.tr);
+            return true;
+          },
 
       acceptChange:
         (changeId: string) =>
-        ({ editor, tr }) => {
-          const change = this.storage.changes.find((c) => c.id === changeId);
-          if (!change) return false;
+          ({ editor, tr }) => {
+            const change = this.storage.changes.find((c) => c.id === changeId);
+            if (!change) return false;
 
-          // Remove from storage
-          this.storage.changes = this.storage.changes.filter((c) => c.id !== changeId);
+            // Remove from storage
+            this.storage.changes = this.storage.changes.filter((c) => c.id !== changeId);
 
-          // If it's a deletion, actually delete the content
-          if (change.type === 'delete' && change.anchor.pmPos !== undefined) {
-            const pos = change.anchor.pmPos;
-            const length = change.length || 0;
-            tr.delete(pos, pos + length);
-          }
+            // If it's a deletion, actually delete the content
+            if (change.type === 'delete' && change.anchor.pmPos !== undefined) {
+              const pos = change.anchor.pmPos;
+              const length = change.length || 0;
+              tr.delete(pos, pos + length);
+            }
 
-          editor.view.dispatch(tr);
-          return true;
-        },
+            editor.view.dispatch(tr);
+            return true;
+          },
 
       rejectChange:
         (changeId: string) =>
-        ({ editor, tr }) => {
-          const change = this.storage.changes.find((c) => c.id === changeId);
-          if (!change) return false;
+          ({ editor, tr }) => {
+            const change = this.storage.changes.find((c) => c.id === changeId);
+            if (!change) return false;
 
-          // Remove from storage
-          this.storage.changes = this.storage.changes.filter((c) => c.id !== changeId);
+            // Remove from storage
+            this.storage.changes = this.storage.changes.filter((c) => c.id !== changeId);
 
-          // If it's an insertion, delete the inserted content
-          if (change.type === 'insert' && change.anchor.pmPos !== undefined) {
-            const pos = change.anchor.pmPos;
-            const length = change.content?.length || 0;
-            tr.delete(pos, pos + length);
-          }
-          // If it's a deletion, restore the deleted content
-          else if (change.type === 'delete' && change.anchor.pmPos !== undefined) {
-            const pos = change.anchor.pmPos;
-            tr.insertText(change.oldContent || '', pos);
-          }
+            // If it's an insertion, delete the inserted content
+            if (change.type === 'insert' && change.anchor.pmPos !== undefined) {
+              const pos = change.anchor.pmPos;
+              const length = change.content?.length || 0;
+              tr.delete(pos, pos + length);
+            }
+            // If it's a deletion, restore the deleted content
+            else if (change.type === 'delete' && change.anchor.pmPos !== undefined) {
+              const pos = change.anchor.pmPos;
+              tr.insertText(change.oldContent || '', pos);
+            }
 
-          editor.view.dispatch(tr);
-          return true;
-        },
+            editor.view.dispatch(tr);
+            return true;
+          },
 
       acceptAllChanges:
         () =>
-        ({ commands }) => {
-          const changes = [...this.storage.changes];
-          changes.forEach((change) => {
-            commands.acceptChange(change.id);
-          });
-          return true;
-        },
+          ({ commands }) => {
+            const changes = [...this.storage.changes];
+            changes.forEach((change) => {
+              commands.acceptChange(change.id);
+            });
+            return true;
+          },
 
       rejectAllChanges:
         () =>
-        ({ commands }) => {
-          const changes = [...this.storage.changes];
-          changes.forEach((change) => {
-            commands.rejectChange(change.id);
-          });
-          return true;
-        },
+          ({ commands }) => {
+            const changes = [...this.storage.changes];
+            changes.forEach((change) => {
+              commands.rejectChange(change.id);
+            });
+            return true;
+          },
     };
   },
 
@@ -234,6 +234,8 @@ export const TrackChanges = Extension.create<TrackChangesOptions, TrackChangesSt
                     },
                     oldContent: deletedContent,
                     length: deletedContent.length,
+                    author: extension.options.author,
+                    timestamp: new Date().toISOString(),
                   };
                   extension.storage.changes.push(change);
                   extension.options.onChangeRecorded?.(change);
@@ -251,6 +253,8 @@ export const TrackChanges = Extension.create<TrackChangesOptions, TrackChangesSt
                       pmPos: newStart,
                     },
                     content: insertedContent,
+                    author: extension.options.author,
+                    timestamp: new Date().toISOString(),
                   };
                   extension.storage.changes.push(change);
                   extension.options.onChangeRecorded?.(change);

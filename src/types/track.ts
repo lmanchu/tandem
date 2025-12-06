@@ -31,6 +31,8 @@ export interface Change {
   content?: string;
   length?: number;
   oldContent?: string;
+  author: Author;
+  timestamp: string;
   format?: {
     type: string;
     value: any;
@@ -123,6 +125,8 @@ export function createTrackFile(
             type: 'insert',
             anchor: { line: 1, column: 1, offset: 0 },
             content: initialContent,
+            author,
+            timestamp: now,
           },
         ],
         status: 'accepted',

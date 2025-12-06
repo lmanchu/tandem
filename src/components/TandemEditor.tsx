@@ -8,7 +8,8 @@ import { WebsocketProvider } from 'y-websocket';
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import type { Author, Change } from '../types/track';
 import { TrackChanges } from '../extensions/TrackChanges';
-import './TandemEditor.css';
+import { Toolbar } from './Toolbar';
+import { TrackChangesSidebar } from './TrackChangesSidebar';
 
 interface TandemEditorProps {
   documentId: string;
@@ -47,6 +48,11 @@ export function TandemEditor({
 
   // Initialize TipTap editor
   const editor = useEditor({
+    editorProps: {
+      attributes: {
+        class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-xl focus:outline-none max-w-none min-h-[500px]',
+      },
+    },
     extensions: [
       StarterKit.configure({
         history: false, // Disable default history, Yjs handles it
@@ -110,111 +116,30 @@ export function TandemEditor({
   }, [provider, ydoc]);
 
   return (
-    <div className="tandem-editor-wrapper">
-      <div className="tandem-editor">
-        <div className="tandem-editor-header">
-          <div className="connection-status">
-            <span
-              className={`status-dot ${isConnected ? 'connected' : 'disconnected'}`}
-            />
-            {isConnected ? 'Connected' : 'Disconnected'}
-          </div>
-          <div className="author-info">
-            <span
-              className="author-badge"
-              style={{ backgroundColor: author.color }}
-            >
-              {author.type === 'ai' ? '🤖' : '👤'} {author.name}
-            </span>
+    <div className="flex flex-col h-full bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-gray-200 dark:border-zinc-800 overflow-hidden">
+      <Toolbar
+        editor={editor}
+        trackingEnabled={trackingEnabled}
+        onToggleTracking={toggleTracking}
+        isConnected={isConnected}
+        author={author}
+      />
+
+      <div className="flex flex-1 overflow-hidden relative">
+        <div className="flex-1 overflow-y-auto scroll-smooth">
+          <div className="max-w-3xl mx-auto py-12 px-8">
+            <EditorContent editor={editor} />
           </div>
         </div>
 
-        <div className="tandem-editor-toolbar">
-          <button
-            onClick={() => editor?.chain().focus().toggleBold().run()}
-            className={editor?.isActive('bold') ? 'is-active' : ''}
-          >
-            B
-          </button>
-          <button
-            onClick={() => editor?.chain().focus().toggleItalic().run()}
-            className={editor?.isActive('italic') ? 'is-active' : ''}
-          >
-            I
-          </button>
-          <button
-            onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}
-            className={editor?.isActive('heading', { level: 1 }) ? 'is-active' : ''}
-          >
-            H1
-          </button>
-          <button
-            onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
-            className={editor?.isActive('heading', { level: 2 }) ? 'is-active' : ''}
-          >
-            H2
-          </button>
-          <button
-            onClick={() => editor?.chain().focus().toggleBulletList().run()}
-            className={editor?.isActive('bulletList') ? 'is-active' : ''}
-          >
-            • List
-          </button>
-          <button
-            onClick={() => editor?.chain().focus().toggleCodeBlock().run()}
-            className={editor?.isActive('codeBlock') ? 'is-active' : ''}
-          >
-            Code
-          </button>
-          <div className="toolbar-divider" />
-          <button
-            onClick={toggleTracking}
-            className={trackingEnabled ? 'is-active track-toggle' : 'track-toggle'}
-          >
-            {trackingEnabled ? '📝 Tracking ON' : '📝 Track Changes'}
-          </button>
-        </div>
-
-        <EditorContent editor={editor} className="tandem-editor-content" />
+        {trackingEnabled && (
+          <TrackChangesSidebar
+            changes={changes}
+            onAccept={acceptChange}
+            onReject={rejectChange}
+          />
+        )}
       </div>
-
-      {trackingEnabled && changes.length > 0 && (
-        <div className="changes-sidebar">
-          <div className="changes-header">
-            <h3>Changes ({changes.length})</h3>
-          </div>
-          <div className="changes-list">
-            {changes.map((change) => (
-              <div key={change.id} className={`change-item change-${change.type}`}>
-                <div className="change-content">
-                  {change.type === 'insert' && (
-                    <span className="change-text insert">+ {change.content}</span>
-                  )}
-                  {change.type === 'delete' && (
-                    <span className="change-text delete">- {change.oldContent}</span>
-                  )}
-                </div>
-                <div className="change-actions">
-                  <button
-                    className="accept-btn"
-                    onClick={() => acceptChange(change.id)}
-                    title="Accept"
-                  >
-                    ✓
-                  </button>
-                  <button
-                    className="reject-btn"
-                    onClick={() => rejectChange(change.id)}
-                    title="Reject"
-                  >
-                    ✗
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
