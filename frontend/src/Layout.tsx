@@ -8,8 +8,9 @@ export function AppLayout() {
             {/* Header */}
             <header className="flex h-14 items-center border-b px-6">
                 <div className="flex items-center gap-2 font-semibold">
-                    <span className="text-primary">AI</span>
-                    <span>Collab</span>
+                    {/* <span className="text-primary">AI</span> */}
+                    {/* <span>Collab</span> */}
+                    <span className="text-primary text-xl tracking-tight">Tandem</span>
                 </div>
             </header>
 

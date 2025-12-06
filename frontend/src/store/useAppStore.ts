@@ -72,13 +72,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         const { currentFile } = get();
         if (!currentFile) return;
 
-        set({ isSaving: true, fileContent: content });
+        set({ isSaving: true });
 
-        // Simulate API save delay
-        setTimeout(() => {
-            set({ isSaving: false });
-            console.log("Saved content for", currentFile.path);
-        }, 1500);
+        try {
+            await api.saveFile(currentFile.path, content);
+            set({ fileContent: content, isSaving: false });
+        } catch (e) {
+            set({ error: "Failed to save file", isSaving: false });
+        }
     },
 
     loadCommits: async (path?: string) => {
