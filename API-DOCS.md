@@ -259,6 +259,112 @@ Creates a revert commit that undoes the changes from the specified commit.
 
 ---
 
+## Sync API
+
+### Get Sync Status
+
+**GET /api/sync/status**
+
+Returns the current Git sync status with the remote repository.
+
+**Response:**
+```json
+{
+  "branch": "master",
+  "tracking": "origin/master",
+  "ahead": 3,
+  "behind": 0,
+  "isSynced": false,
+  "hasRemote": true
+}
+```
+
+**Fields:**
+- `branch`: Current branch name
+- `tracking`: Remote tracking branch
+- `ahead`: Number of commits ahead of remote
+- `behind`: Number of commits behind remote
+- `isSynced`: Whether local and remote are in sync
+- `hasRemote`: Whether a remote repository is configured
+
+---
+
+### Push to Remote
+
+**POST /api/sync/push**
+
+Pushes local commits to the remote repository (GitHub).
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "branch": "master",
+  "message": "Pushed to origin/master"
+}
+```
+
+**Response (Failure):**
+```json
+{
+  "success": false,
+  "error": "No remote repository configured"
+}
+```
+
+---
+
+### Pull from Remote
+
+**POST /api/sync/pull**
+
+Pulls updates from the remote repository.
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "branch": "master",
+  "filesChanged": ["docs/readme.md"],
+  "insertions": 10,
+  "deletions": 5,
+  "message": "Pulled from origin/master"
+}
+```
+
+**Response (Failure):**
+```json
+{
+  "success": false,
+  "error": "Merge conflict detected"
+}
+```
+
+---
+
+### Set Remote Repository
+
+**POST /api/sync/remote**
+
+Configures the remote repository URL.
+
+**Request Body:**
+```json
+{
+  "url": "https://github.com/user/repo.git"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Remote configured successfully"
+}
+```
+
+---
+
 ## Error Handling
 
 All errors return appropriate HTTP status codes with error messages:
