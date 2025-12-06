@@ -25,13 +25,18 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "diff": "^8.0.2",
+    "lib0": "^0.2.114",
     "lucide-react": "^0.556.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.10.1",
+    "socket.io-client": "^4.8.1",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
+    "y-codemirror.next": "^0.3.5",
+    "y-protocols": "^1.0.6",
+    "yjs": "^13.6.27",
     "zustand": "^5.0.9"
   },
   "devDependencies": {

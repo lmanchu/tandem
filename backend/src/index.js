@@ -1,12 +1,15 @@
 /**
  * Tandem Backend API
- * Hono server with Git-backed file storage
+ * Hono server with Git-backed file storage + Yjs WebSocket
  */
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
+import { createServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 import GitService from './git-service.js';
+import { setupYjsConnection } from './yjs-service.js';
 
 const app = new Hono();
 const git = new GitService();
@@ -230,15 +233,30 @@ app.post('/api/workspace', async (c) => {
   }
 });
 
-// Start server
+// Start server with WebSocket support
 const port = process.env.PORT || 3000;
 
 console.log(`🚀 Tandem API starting on port ${port}...`);
 
-serve({
+// Use Node.js HTTP server to support both Hono and Socket.io
+const server = serve({
   fetch: app.fetch,
   port
 }, (info) => {
   console.log(`✅ Server running at http://localhost:${info.port}`);
   console.log(`📂 Workspace: ${git.repoPath}`);
+
+  // Initialize Socket.io on the same server
+  const io = new SocketIOServer(server, {
+    cors: {
+      origin: ['http://localhost:5173', 'file://'],
+      methods: ['GET', 'POST'],
+      credentials: true
+    },
+    path: '/socket.io/'
+  });
+
+  // Set up Yjs collaboration
+  setupYjsConnection(io);
+  console.log(`🔄 Yjs WebSocket server initialized`);
 });
