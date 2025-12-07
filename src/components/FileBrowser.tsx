@@ -14,8 +14,10 @@ import {
   Link,
   Check,
   History,
+  Copy,
 } from 'lucide-react';
 import { VersionHistory } from './VersionHistory';
+import { getAuthHeaders } from './PasswordGate';
 
 interface DocumentInfo {
   id: string;
@@ -47,6 +49,7 @@ export function FileBrowser({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [copiedDocId, setCopiedDocId] = useState<string | null>(null);
+  const [copiedMcpId, setCopiedMcpId] = useState<string | null>(null);
   const [versionHistoryDocId, setVersionHistoryDocId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
@@ -60,10 +63,22 @@ export function FileBrowser({
     });
   };
 
+  const handleCopyMcpId = (docId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Copy format: tandem://doc/{docId} - similar to obsidian:// format
+    const mcpUri = `tandem://doc/${docId}`;
+    navigator.clipboard.writeText(mcpUri).then(() => {
+      setCopiedMcpId(docId);
+      setTimeout(() => setCopiedMcpId(null), 2000);
+    });
+  };
+
   const fetchDocuments = useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${apiUrl}/api/documents`);
+      const response = await fetch(`${apiUrl}/api/documents`, {
+        headers: getAuthHeaders(),
+      });
       if (response.ok) {
         const docs = await response.json();
         setDocuments(docs);
@@ -85,7 +100,7 @@ export function FileBrowser({
     try {
       const response = await fetch(`${apiUrl}/api/documents`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ title: newDocTitle.trim() }),
       });
 
@@ -108,6 +123,7 @@ export function FileBrowser({
     try {
       const response = await fetch(`${apiUrl}/api/documents/${docId}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
 
       if (response.ok) {
@@ -136,7 +152,7 @@ export function FileBrowser({
       // Create document
       const response = await fetch(`${apiUrl}/api/documents`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ title }),
       });
 
@@ -230,7 +246,7 @@ export function FileBrowser({
 
       const response = await fetch(`${apiUrl}/api/documents`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ title }),
       });
 
@@ -465,6 +481,17 @@ export function FileBrowser({
                   title="版本歷史"
                 >
                   <History className="w-3.5 h-3.5 text-purple-500" />
+                </button>
+                <button
+                  onClick={(e) => handleCopyMcpId(doc.id, e)}
+                  className="p-1 hover:bg-green-100 dark:hover:bg-green-900/30 rounded"
+                  title="複製 MCP 文件連結 (tandem://doc/...)"
+                >
+                  {copiedMcpId === doc.id ? (
+                    <Check className="w-3.5 h-3.5 text-green-500" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5 text-green-600" />
+                  )}
                 </button>
                 <button
                   onClick={(e) => handleCopyLink(doc.id, e)}

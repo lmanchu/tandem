@@ -2,6 +2,33 @@
 
 All notable changes to Tandem will be documented in this file.
 
+## [1.3.0] - 2025-12-08
+
+### Added
+- **MCP Server Integration** - AI tools can now directly interact with Tandem documents
+  - `tandem_list` - List all documents
+  - `tandem_read` - Read document content (returns HTML)
+  - `tandem_write` - Write/update document content
+  - `tandem_create` - Create new documents
+  - `tandem_delete` - Delete documents
+- **Content API** - REST endpoints for document content operations
+  - `GET /api/documents/:id/content` - Read document as HTML
+  - `PUT /api/documents/:id/content` - Write HTML to document
+  - Automatic HTML ↔ Yjs CRDT conversion
+- **Copy MCP Link** - Copy document ID for AI tool integration
+  - New copy button in file browser (green icon)
+  - Copies `tandem://doc/{documentId}` format
+  - Similar to Obsidian's `obsidian://` URI scheme
+- **Password Authentication** - Secure access to Tandem
+  - Environment variable `TANDEM_PASSWORD` for server-side auth
+  - Token-based authentication for API requests
+  - Login gate for web interface
+
+### Technical
+- MCP server built with `@modelcontextprotocol/sdk`
+- Supports Claude Code and other MCP-compatible AI tools
+- Launchd services for automatic server/tunnel startup
+
 ## [1.2.0] - 2025-12-07
 
 ### Added

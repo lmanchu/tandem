@@ -15,6 +15,7 @@ const __dirname = path.dirname(__filename);
 const DATA_DIR = process.env.TANDEM_DATA_DIR || './data';
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const AUTH_PASSWORD = process.env.TANDEM_PASSWORD || ''; // Empty = no auth required
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
@@ -91,8 +92,55 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// API Routes
-app.get('/api/documents', (_req, res) => {
+// Simple token-based auth (token = base64 of password)
+function generateToken(password: string): string {
+  return Buffer.from(password).toString('base64');
+}
+
+function verifyToken(token: string): boolean {
+  if (!AUTH_PASSWORD) return true; // No password set = no auth required
+  return token === generateToken(AUTH_PASSWORD);
+}
+
+// Auth check middleware
+function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (!AUTH_PASSWORD) return next(); // No password set = skip auth
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized', requiresAuth: true });
+  }
+
+  const token = authHeader.substring(7);
+  if (!verifyToken(token)) {
+    return res.status(401).json({ error: 'Invalid token', requiresAuth: true });
+  }
+
+  next();
+}
+
+// Auth endpoints
+app.get('/api/auth/status', (_req, res) => {
+  res.json({ requiresAuth: !!AUTH_PASSWORD });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { password } = req.body;
+
+  if (!AUTH_PASSWORD) {
+    return res.json({ success: true, token: '' });
+  }
+
+  if (password === AUTH_PASSWORD) {
+    const token = generateToken(password);
+    return res.json({ success: true, token });
+  }
+
+  res.status(401).json({ success: false, error: 'Invalid password' });
+});
+
+// API Routes (protected)
+app.get('/api/documents', requireAuth, (_req, res) => {
   try {
     const files = fs.readdirSync(DATA_DIR).filter(f => f.endsWith('.track'));
     const documents: DocumentInfo[] = files.map(file => {
@@ -113,7 +161,7 @@ app.get('/api/documents', (_req, res) => {
   }
 });
 
-app.post('/api/documents', (req, res) => {
+app.post('/api/documents', requireAuth, (req, res) => {
   try {
     const { title } = req.body;
     const id = title?.replace(/[^a-zA-Z0-9-_]/g, '_') || `doc-${Date.now()}`;
@@ -151,7 +199,7 @@ app.post('/api/documents', (req, res) => {
   }
 });
 
-app.get('/api/documents/:id', (req, res) => {
+app.get('/api/documents/:id', requireAuth, (req, res) => {
   try {
     const trackFilePath = getTrackFilePath(req.params.id);
 
@@ -173,7 +221,7 @@ app.get('/api/documents/:id', (req, res) => {
   }
 });
 
-app.patch('/api/documents/:id', (req, res) => {
+app.patch('/api/documents/:id', requireAuth, (req, res) => {
   try {
     const trackFilePath = getTrackFilePath(req.params.id);
 
@@ -199,7 +247,7 @@ app.patch('/api/documents/:id', (req, res) => {
   }
 });
 
-app.delete('/api/documents/:id', (req, res) => {
+app.delete('/api/documents/:id', requireAuth, (req, res) => {
   try {
     const trackFilePath = getTrackFilePath(req.params.id);
 
@@ -216,8 +264,255 @@ app.delete('/api/documents/:id', (req, res) => {
   }
 });
 
+// Content API endpoints (for MCP and external tools)
+// GET content as HTML
+app.get('/api/documents/:id/content', requireAuth, (req, res) => {
+  try {
+    const trackFilePath = getTrackFilePath(req.params.id);
+
+    if (!fs.existsSync(trackFilePath)) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    const data = JSON.parse(fs.readFileSync(trackFilePath, 'utf-8')) as TrackFileData;
+
+    // If no Yjs state, return empty content
+    if (!data.yDocState || data.yDocState.length === 0) {
+      return res.json({ content: '', format: 'html' });
+    }
+
+    // Create Yjs doc and apply state
+    const doc = new Y.Doc();
+    const state = new Uint8Array(data.yDocState);
+    Y.applyUpdate(doc, state);
+
+    // Get prosemirror content from Yjs
+    const fragment = doc.getXmlFragment('default');
+    const content = yXmlFragmentToHtml(fragment);
+
+    res.json({ content, format: 'html' });
+  } catch (error) {
+    console.error('Error getting document content:', error);
+    res.status(500).json({ error: 'Failed to get document content' });
+  }
+});
+
+// PUT content (accept HTML or markdown)
+app.put('/api/documents/:id/content', requireAuth, (req, res) => {
+  try {
+    const trackFilePath = getTrackFilePath(req.params.id);
+
+    if (!fs.existsSync(trackFilePath)) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    const { content } = req.body;
+    if (typeof content !== 'string') {
+      return res.status(400).json({ error: 'Content must be a string' });
+    }
+
+    const data = JSON.parse(fs.readFileSync(trackFilePath, 'utf-8')) as TrackFileData;
+
+    // Create new Yjs doc with the HTML content
+    const doc = new Y.Doc();
+    const fragment = doc.getXmlFragment('default');
+
+    // Convert HTML to Yjs XML structure
+    htmlToYXmlFragment(content, fragment);
+
+    // Save version before updating
+    if (data.yDocState && data.yDocState.length > 0) {
+      saveVersion(req.params.id, data.yDocState);
+    }
+
+    // Encode new state
+    const newState = Y.encodeStateAsUpdate(doc);
+    data.yDocState = Array.from(newState);
+    data.updatedAt = new Date().toISOString();
+
+    fs.writeFileSync(trackFilePath, JSON.stringify(data, null, 2));
+    console.log(`Document content updated via API: ${req.params.id}`);
+
+    res.json({ success: true, message: 'Content updated' });
+  } catch (error) {
+    console.error('Error updating document content:', error);
+    res.status(500).json({ error: 'Failed to update document content' });
+  }
+});
+
+// Helper: Convert Yjs XmlFragment to HTML
+function yXmlFragmentToHtml(fragment: Y.XmlFragment): string {
+  let html = '';
+
+  fragment.forEach((item) => {
+    if (item instanceof Y.XmlText) {
+      html += escapeHtml(item.toString());
+    } else if (item instanceof Y.XmlElement) {
+      const tagName = item.nodeName.toLowerCase();
+      const attrs = item.getAttributes();
+      let attrStr = '';
+
+      for (const [key, value] of Object.entries(attrs)) {
+        if (value !== undefined && value !== null) {
+          attrStr += ` ${key}="${escapeHtml(String(value))}"`;
+        }
+      }
+
+      const innerHtml = yXmlFragmentToHtml(item);
+
+      // Self-closing tags
+      if (['br', 'hr', 'img'].includes(tagName)) {
+        html += `<${tagName}${attrStr} />`;
+      } else {
+        html += `<${tagName}${attrStr}>${innerHtml}</${tagName}>`;
+      }
+    }
+  });
+
+  return html;
+}
+
+// Helper: Convert HTML to Yjs XmlFragment
+function htmlToYXmlFragment(html: string, fragment: Y.XmlFragment): void {
+  // Simple HTML parser for common elements
+  // For complex HTML, you might want to use a proper parser
+
+  // Wrap in a div if not already wrapped
+  const wrappedHtml = html.trim().startsWith('<') ? html : `<p>${html}</p>`;
+
+  // Parse HTML using a simple regex-based approach
+  // This handles basic structure - for production, consider using a proper HTML parser
+  const tokens = tokenizeHtml(wrappedHtml);
+  buildYjsFromTokens(tokens, fragment);
+}
+
+interface HtmlToken {
+  type: 'open' | 'close' | 'text' | 'selfclose';
+  tag?: string;
+  attrs?: Record<string, string>;
+  text?: string;
+}
+
+function tokenizeHtml(html: string): HtmlToken[] {
+  const tokens: HtmlToken[] = [];
+  const tagRegex = /<\/?([a-zA-Z][a-zA-Z0-9]*)((?:\s+[a-zA-Z_:][-a-zA-Z0-9_:.]*(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*(\/?)>|([^<]+)/g;
+
+  let match;
+  while ((match = tagRegex.exec(html)) !== null) {
+    if (match[4]) {
+      // Text content
+      const text = decodeHtmlEntities(match[4]);
+      if (text.trim() || text.includes('\n')) {
+        tokens.push({ type: 'text', text });
+      }
+    } else if (match[0].startsWith('</')) {
+      // Closing tag
+      tokens.push({ type: 'close', tag: match[1].toLowerCase() });
+    } else if (match[3] === '/' || ['br', 'hr', 'img', 'input', 'meta', 'link'].includes(match[1].toLowerCase())) {
+      // Self-closing tag
+      const attrs = parseAttributes(match[2]);
+      tokens.push({ type: 'selfclose', tag: match[1].toLowerCase(), attrs });
+    } else {
+      // Opening tag
+      const attrs = parseAttributes(match[2]);
+      tokens.push({ type: 'open', tag: match[1].toLowerCase(), attrs });
+    }
+  }
+
+  return tokens;
+}
+
+function parseAttributes(attrString: string): Record<string, string> {
+  const attrs: Record<string, string> = {};
+  const attrRegex = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+
+  let match;
+  while ((match = attrRegex.exec(attrString)) !== null) {
+    const name = match[1];
+    const value = match[2] || match[3] || match[4] || '';
+    attrs[name] = decodeHtmlEntities(value);
+  }
+
+  return attrs;
+}
+
+function buildYjsFromTokens(tokens: HtmlToken[], parent: Y.XmlFragment | Y.XmlElement): void {
+  let i = 0;
+
+  while (i < tokens.length) {
+    const token = tokens[i];
+
+    if (token.type === 'text') {
+      const text = new Y.XmlText();
+      text.insert(0, token.text || '');
+      parent.push([text]);
+      i++;
+    } else if (token.type === 'selfclose') {
+      const elem = new Y.XmlElement(token.tag || 'br');
+      if (token.attrs) {
+        for (const [key, value] of Object.entries(token.attrs)) {
+          elem.setAttribute(key, value);
+        }
+      }
+      parent.push([elem]);
+      i++;
+    } else if (token.type === 'open') {
+      const elem = new Y.XmlElement(token.tag || 'div');
+      if (token.attrs) {
+        for (const [key, value] of Object.entries(token.attrs)) {
+          elem.setAttribute(key, value);
+        }
+      }
+
+      // Find matching closing tag and process children
+      const closeIndex = findClosingTag(tokens, i, token.tag || '');
+      const childTokens = tokens.slice(i + 1, closeIndex);
+      buildYjsFromTokens(childTokens, elem);
+
+      parent.push([elem]);
+      i = closeIndex + 1;
+    } else {
+      // Skip unexpected closing tags
+      i++;
+    }
+  }
+}
+
+function findClosingTag(tokens: HtmlToken[], openIndex: number, tagName: string): number {
+  let depth = 1;
+  for (let i = openIndex + 1; i < tokens.length; i++) {
+    if (tokens[i].type === 'open' && tokens[i].tag === tagName) {
+      depth++;
+    } else if (tokens[i].type === 'close' && tokens[i].tag === tagName) {
+      depth--;
+      if (depth === 0) {
+        return i;
+      }
+    }
+  }
+  return tokens.length; // No matching close found
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+}
+
 // Version history endpoints
-app.get('/api/documents/:id/versions', (req, res) => {
+app.get('/api/documents/:id/versions', requireAuth, (req, res) => {
   try {
     const versionsDir = getVersionsDir(req.params.id);
     const files = fs.readdirSync(versionsDir).filter(f => f.endsWith('.json')).sort().reverse();
@@ -240,7 +535,7 @@ app.get('/api/documents/:id/versions', (req, res) => {
   }
 });
 
-app.post('/api/documents/:id/versions/:versionId/restore', (req, res) => {
+app.post('/api/documents/:id/versions/:versionId/restore', requireAuth, (req, res) => {
   try {
     const versionsDir = getVersionsDir(req.params.id);
     const versionPath = path.join(versionsDir, `${req.params.versionId}.json`);

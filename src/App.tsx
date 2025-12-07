@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { TandemEditor } from './components/TandemEditor';
 import { FileBrowser } from './components/FileBrowser';
 import { ServerSettings } from './components/ServerSettings';
+import { PasswordGate } from './components/PasswordGate';
 import { createAuthor } from './types/track';
 import { FileText, Settings } from 'lucide-react';
 import type { Editor } from '@tiptap/react';
@@ -70,6 +71,7 @@ function App() {
   }, []);
 
   return (
+    <PasswordGate>
     <div className="h-screen w-full bg-gray-50 dark:bg-zinc-950 flex flex-col">
       {/* Header */}
       <header className="h-14 px-4 flex items-center justify-between border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
@@ -143,6 +145,7 @@ function App() {
       {/* Server Settings Modal */}
       <ServerSettings isOpen={showSettings} onClose={() => setShowSettings(false)} />
     </div>
+    </PasswordGate>
   );
 }
 

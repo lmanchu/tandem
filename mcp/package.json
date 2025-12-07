@@ -1,0 +1,22 @@
+{
+  "name": "tandem-mcp",
+  "version": "1.0.0",
+  "description": "MCP Server for Tandem document operations",
+  "type": "module",
+  "main": "dist/tandem-mcp.js",
+  "bin": {
+    "tandem-mcp": "./dist/tandem-mcp.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx tandem-mcp.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0"
+  }
+}

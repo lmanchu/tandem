@@ -1,73 +1,101 @@
-# React + TypeScript + Vite
+# Tandem
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Real-time collaborative document editor with AI integration and MCP support.
 
-Currently, two official plugins are available:
+**Live Demo:** https://tandem.irisgo.xyz
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Features
 
-## React Compiler
+- **Real-time Collaboration** - Multiple users can edit documents simultaneously using Yjs CRDT
+- **Track Changes** - Accept/reject changes with visual diff highlighting
+- **Rich Text Editing** - Tables, code blocks, images, and more with TipTap
+- **AI Assistant** - Multi-provider AI (Claude, Gemini, Ollama) for document assistance
+- **Version History** - View and restore previous document versions
+- **MCP Integration** - Let AI tools directly read/write Tandem documents
+- **Dark Mode** - Full dark theme support
+- **Electron App** - Desktop application for macOS
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## MCP Integration (Claude Code / AI Tools)
 
-## Expanding the ESLint configuration
+Tandem includes an MCP (Model Context Protocol) server that allows AI tools like Claude Code to directly interact with your documents.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Setup for Claude Code
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+1. **Build the MCP server:**
+   ```bash
+   cd mcp
+   npm install
+   npm run build
+   ```
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+2. **Add to Claude Code:**
+   ```bash
+   claude mcp add tandem \
+     -s user \
+     -e TANDEM_PASSWORD=your_password \
+     -- node /path/to/tandem-3.0/mcp/dist/tandem-mcp.js
+   ```
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+3. **Restart Claude Code** to load the MCP server.
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `tandem_list` | List all documents |
+| `tandem_read` | Read document content (returns HTML) |
+| `tandem_write` | Write/update document content |
+| `tandem_create` | Create a new document |
+| `tandem_delete` | Delete a document |
+
+### Copy Document Link
+
+In the Tandem web UI, hover over any document and click the green **Copy** button to copy a `tandem://doc/{documentId}` link. Paste this into Claude Code to reference the document.
+
+Example workflow:
+```
+User: Read tandem://doc/my-meeting-notes
+Claude: [Uses tandem_read to fetch the document content]
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Prerequisites
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- Node.js 20+ or 22.12+
+- npm
+
+### Setup
+
+```bash
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Build for production
+npm run build
+
+# Start production server
+npm run start
 ```
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `TANDEM_PASSWORD` | Password for authentication |
+| `PORT` | Server port (default: 3000) |
+
+## Tech Stack
+
+- **Frontend:** React, TipTap, Tailwind CSS, Vite
+- **Backend:** Express, Hocuspocus, Yjs
+- **Desktop:** Electron
+- **AI:** Claude API, Gemini API, Ollama
+- **MCP:** @modelcontextprotocol/sdk
+
+## License
+
+MIT

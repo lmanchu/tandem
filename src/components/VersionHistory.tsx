@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { X, History, RotateCcw, Clock, FileText } from 'lucide-react';
+import { getAuthHeaders } from './PasswordGate';
 
 interface Version {
   id: string;
@@ -57,7 +58,9 @@ export function VersionHistory({ isOpen, onClose, documentId, onRestore }: Versi
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/documents/${documentId}/versions`);
+      const response = await fetch(`${API_BASE}/api/documents/${documentId}/versions`, {
+        headers: getAuthHeaders(),
+      });
       if (!response.ok) throw new Error('Failed to fetch versions');
       const data = await response.json();
       setVersions(data);
@@ -82,7 +85,7 @@ export function VersionHistory({ isOpen, onClose, documentId, onRestore }: Versi
     try {
       const response = await fetch(
         `${API_BASE}/api/documents/${documentId}/versions/${versionId}/restore`,
-        { method: 'POST' }
+        { method: 'POST', headers: getAuthHeaders() }
       );
 
       if (!response.ok) throw new Error('Failed to restore version');
