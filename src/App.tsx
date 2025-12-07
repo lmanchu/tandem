@@ -18,6 +18,17 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const editorRef = useRef<Editor | null>(null);
 
+  // Handle URL doc parameter for shared links
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const docId = params.get('doc');
+    if (docId) {
+      setCurrentDocumentId(docId);
+      // Clean URL without reloading
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
   // Listen for Electron menu open-settings event
   useEffect(() => {
     if (window.tandemElectron?.onOpenSettings) {

@@ -46,6 +46,45 @@ interface DocumentInfo {
   changesCount: number;
 }
 
+interface VersionInfo {
+  id: string;
+  timestamp: string;
+  size: number;
+}
+
+const VERSIONS_DIR = path.join(DATA_DIR, 'versions');
+
+// Ensure versions directory exists
+if (!fs.existsSync(VERSIONS_DIR)) {
+  fs.mkdirSync(VERSIONS_DIR, { recursive: true });
+}
+
+function getVersionsDir(documentName: string): string {
+  const safeName = documentName.replace(/[^a-zA-Z0-9-_]/g, '_');
+  const dir = path.join(VERSIONS_DIR, safeName);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
+
+function saveVersion(documentName: string, yDocState: number[]): string {
+  const versionsDir = getVersionsDir(documentName);
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const versionId = `v_${timestamp}`;
+  const versionPath = path.join(versionsDir, `${versionId}.json`);
+
+  // Only keep last 50 versions per document
+  const existingVersions = fs.readdirSync(versionsDir).filter(f => f.endsWith('.json')).sort();
+  if (existingVersions.length >= 50) {
+    const toDelete = existingVersions.slice(0, existingVersions.length - 49);
+    toDelete.forEach(f => fs.unlinkSync(path.join(versionsDir, f)));
+  }
+
+  fs.writeFileSync(versionPath, JSON.stringify({ yDocState, timestamp: new Date().toISOString() }));
+  return versionId;
+}
+
 // ==================== Express App ====================
 
 const app = express();
@@ -177,6 +216,60 @@ app.delete('/api/documents/:id', (req, res) => {
   }
 });
 
+// Version history endpoints
+app.get('/api/documents/:id/versions', (req, res) => {
+  try {
+    const versionsDir = getVersionsDir(req.params.id);
+    const files = fs.readdirSync(versionsDir).filter(f => f.endsWith('.json')).sort().reverse();
+
+    const versions: VersionInfo[] = files.map(file => {
+      const filePath = path.join(versionsDir, file);
+      const stats = fs.statSync(filePath);
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      return {
+        id: file.replace('.json', ''),
+        timestamp: data.timestamp || stats.mtime.toISOString(),
+        size: stats.size,
+      };
+    });
+
+    res.json(versions);
+  } catch (error) {
+    console.error('Error listing versions:', error);
+    res.json([]);
+  }
+});
+
+app.post('/api/documents/:id/versions/:versionId/restore', (req, res) => {
+  try {
+    const versionsDir = getVersionsDir(req.params.id);
+    const versionPath = path.join(versionsDir, `${req.params.versionId}.json`);
+
+    if (!fs.existsSync(versionPath)) {
+      return res.status(404).json({ error: 'Version not found' });
+    }
+
+    const versionData = JSON.parse(fs.readFileSync(versionPath, 'utf-8'));
+    const trackFilePath = getTrackFilePath(req.params.id);
+
+    if (fs.existsSync(trackFilePath)) {
+      const trackData = JSON.parse(fs.readFileSync(trackFilePath, 'utf-8')) as TrackFileData;
+      // Save current state as a version before restoring
+      saveVersion(req.params.id, trackData.yDocState);
+      // Restore the old version
+      trackData.yDocState = versionData.yDocState;
+      trackData.updatedAt = new Date().toISOString();
+      fs.writeFileSync(trackFilePath, JSON.stringify(trackData, null, 2));
+    }
+
+    console.log(`Restored version ${req.params.versionId} for document ${req.params.id}`);
+    res.json({ success: true, message: 'Version restored' });
+  } catch (error) {
+    console.error('Error restoring version:', error);
+    res.status(500).json({ error: 'Failed to restore version' });
+  }
+});
+
 // Serve static files in production
 if (IS_PRODUCTION) {
   const distPath = path.join(__dirname, '../dist');
@@ -269,6 +362,26 @@ const hocuspocus = new Hocuspocus({
       };
 
       fs.writeFileSync(trackFilePath, JSON.stringify(trackData, null, 2));
+
+      // Save version snapshot (throttled - only if last version is older than 5 minutes)
+      const versionsDir = getVersionsDir(documentName);
+      const existingVersions = fs.readdirSync(versionsDir).filter(f => f.endsWith('.json')).sort();
+      const lastVersion = existingVersions[existingVersions.length - 1];
+      let shouldSaveVersion = true;
+
+      if (lastVersion) {
+        const lastVersionPath = path.join(versionsDir, lastVersion);
+        const lastVersionStats = fs.statSync(lastVersionPath);
+        const timeSinceLastVersion = Date.now() - lastVersionStats.mtime.getTime();
+        // Only save if more than 5 minutes since last version
+        shouldSaveVersion = timeSinceLastVersion > 5 * 60 * 1000;
+      }
+
+      if (shouldSaveVersion && trackData.yDocState.length > 0) {
+        saveVersion(documentName, trackData.yDocState);
+        console.log(`Version snapshot saved for: ${documentName}`);
+      }
+
       console.log(`Document stored: ${trackFilePath} (${changes.length} changes)`);
     } catch (error) {
       console.error(`Error storing track file: ${trackFilePath}`, error);

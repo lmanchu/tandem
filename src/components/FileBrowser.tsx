@@ -11,7 +11,11 @@ import {
   ChevronRight,
   Upload,
   Download,
+  Link,
+  Check,
+  History,
 } from 'lucide-react';
+import { VersionHistory } from './VersionHistory';
 
 interface DocumentInfo {
   id: string;
@@ -42,8 +46,19 @@ export function FileBrowser({
   const [newDocTitle, setNewDocTitle] = useState('');
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [copiedDocId, setCopiedDocId] = useState<string | null>(null);
+  const [versionHistoryDocId, setVersionHistoryDocId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
+
+  const handleCopyLink = (docId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const url = `${window.location.origin}/?doc=${docId}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedDocId(docId);
+      setTimeout(() => setCopiedDocId(null), 2000);
+    });
+  };
 
   const fetchDocuments = useCallback(async () => {
     setIsLoading(true);
@@ -440,13 +455,36 @@ export function FileBrowser({
                   {doc.title}
                 </span>
               </div>
-              <button
-                onClick={(e) => handleDeleteDocument(doc.id, e)}
-                className="p-1 opacity-0 group-hover:opacity-100 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-all"
-                title="刪除"
-              >
-                <Trash2 className="w-3.5 h-3.5 text-red-500" />
-              </button>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setVersionHistoryDocId(doc.id);
+                  }}
+                  className="p-1 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded"
+                  title="版本歷史"
+                >
+                  <History className="w-3.5 h-3.5 text-purple-500" />
+                </button>
+                <button
+                  onClick={(e) => handleCopyLink(doc.id, e)}
+                  className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded"
+                  title="複製分享連結"
+                >
+                  {copiedDocId === doc.id ? (
+                    <Check className="w-3.5 h-3.5 text-green-500" />
+                  ) : (
+                    <Link className="w-3.5 h-3.5 text-blue-500" />
+                  )}
+                </button>
+                <button
+                  onClick={(e) => handleDeleteDocument(doc.id, e)}
+                  className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"
+                  title="刪除"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                </button>
+              </div>
             </div>
             <div className="flex items-center gap-1 mt-1 ml-6 text-xs text-zinc-400 dark:text-zinc-500">
               <Clock className="w-3 h-3" />
@@ -460,6 +498,13 @@ export function FileBrowser({
           </div>
         ))}
       </div>
+
+      {/* Version History Modal */}
+      <VersionHistory
+        isOpen={versionHistoryDocId !== null}
+        onClose={() => setVersionHistoryDocId(null)}
+        documentId={versionHistoryDocId}
+      />
     </div>
   );
 }
