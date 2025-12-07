@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import type { DragEvent } from 'react';
 import {
   FileText,
   Plus,
@@ -8,6 +9,8 @@ import {
   Clock,
   ChevronLeft,
   ChevronRight,
+  Upload,
+  Download,
 } from 'lucide-react';
 
 interface DocumentInfo {
@@ -21,19 +24,26 @@ interface DocumentInfo {
 interface FileBrowserProps {
   currentDocumentId: string | null;
   onDocumentSelect: (documentId: string) => void;
+  onImportFile?: (documentId: string, content: string) => void;
+  onExportRequest?: () => string | null;
   apiUrl?: string;
 }
 
 export function FileBrowser({
   currentDocumentId,
   onDocumentSelect,
-  apiUrl = 'http://localhost:3001',
+  onImportFile,
+  onExportRequest,
+  apiUrl = '',
 }: FileBrowserProps) {
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [newDocTitle, setNewDocTitle] = useState('');
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragCounterRef = useRef(0);
 
   const fetchDocuments = useCallback(async () => {
     setIsLoading(true);
@@ -96,6 +106,135 @@ export function FileBrowser({
     }
   };
 
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const content = await file.text();
+      const title = file.name.replace(/\.(md|txt|markdown)$/i, '');
+
+      // Create document
+      const response = await fetch(`${apiUrl}/api/documents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+
+      if (response.ok) {
+        const newDoc = await response.json();
+        setDocuments((prev) => [newDoc, ...prev]);
+        onDocumentSelect(newDoc.id);
+
+        // Notify parent to set content
+        if (onImportFile) {
+          // Wait a bit for the document to be ready
+          setTimeout(() => {
+            onImportFile(newDoc.id, content);
+          }, 500);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to import file:', error);
+    }
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleExport = () => {
+    if (!currentDocumentId || !onExportRequest) return;
+
+    const content = onExportRequest();
+    if (!content) return;
+
+    const currentDoc = documents.find((d) => d.id === currentDocumentId);
+    const filename = `${currentDoc?.title || currentDocumentId}.md`;
+
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounterRef.current = 0;
+
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    const validExtensions = ['.md', '.txt', '.markdown'];
+    const isValidFile = validExtensions.some((ext) => file.name.toLowerCase().endsWith(ext));
+
+    if (!isValidFile) {
+      alert('請拖放 Markdown 檔案 (.md, .txt, .markdown)');
+      return;
+    }
+
+    try {
+      const content = await file.text();
+      const title = file.name.replace(/\.(md|txt|markdown)$/i, '');
+
+      const response = await fetch(`${apiUrl}/api/documents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+
+      if (response.ok) {
+        const newDoc = await response.json();
+        setDocuments((prev) => [newDoc, ...prev]);
+        onDocumentSelect(newDoc.id);
+
+        if (onImportFile) {
+          setTimeout(() => {
+            onImportFile(newDoc.id, content);
+          }, 500);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to import dropped file:', error);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -145,7 +284,36 @@ export function FileBrowser({
   }
 
   return (
-    <div className="w-64 bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col">
+    <div
+      className={`w-64 bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col relative ${
+        isDragging ? 'ring-2 ring-inset ring-blue-500' : ''
+      }`}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      {isDragging && (
+        <div className="absolute inset-0 bg-blue-500/10 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="text-center p-4">
+            <Upload className="w-12 h-12 mx-auto text-blue-500 mb-2" />
+            <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
+              放開以匯入檔案
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".md,.txt,.markdown"
+        onChange={handleFileChange}
+        className="hidden"
+      />
+
       {/* Header */}
       <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -160,6 +328,22 @@ export function FileBrowser({
           >
             <Plus className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
           </button>
+          <button
+            onClick={handleImportClick}
+            className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded transition-colors"
+            title="匯入 Markdown 檔案"
+          >
+            <Upload className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+          </button>
+          {currentDocumentId && onExportRequest && (
+            <button
+              onClick={handleExport}
+              className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded transition-colors"
+              title="匯出為 Markdown"
+            >
+              <Download className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+            </button>
+          )}
           <button
             onClick={fetchDocuments}
             className={`p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded transition-colors ${

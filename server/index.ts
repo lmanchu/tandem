@@ -1,12 +1,20 @@
-import { Server } from '@hocuspocus/server';
+import { Hocuspocus } from '@hocuspocus/server';
 import express from 'express';
 import cors from 'cors';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as Y from 'yjs';
+import { createServer } from 'http';
+import { WebSocketServer } from 'ws';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Directory to store .track files
 const DATA_DIR = process.env.TANDEM_DATA_DIR || './data';
+const PORT = parseInt(process.env.PORT || '3000', 10);
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
@@ -38,13 +46,13 @@ interface DocumentInfo {
   changesCount: number;
 }
 
-// ==================== REST API ====================
+// ==================== Express App ====================
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// List all documents
+// API Routes
 app.get('/api/documents', (_req, res) => {
   try {
     const files = fs.readdirSync(DATA_DIR).filter(f => f.endsWith('.track'));
@@ -66,7 +74,6 @@ app.get('/api/documents', (_req, res) => {
   }
 });
 
-// Create new document
 app.post('/api/documents', (req, res) => {
   try {
     const { title } = req.body;
@@ -105,7 +112,6 @@ app.post('/api/documents', (req, res) => {
   }
 });
 
-// Get document info
 app.get('/api/documents/:id', (req, res) => {
   try {
     const trackFilePath = getTrackFilePath(req.params.id);
@@ -128,7 +134,6 @@ app.get('/api/documents/:id', (req, res) => {
   }
 });
 
-// Update document title
 app.patch('/api/documents/:id', (req, res) => {
   try {
     const trackFilePath = getTrackFilePath(req.params.id);
@@ -155,7 +160,6 @@ app.patch('/api/documents/:id', (req, res) => {
   }
 });
 
-// Delete document
 app.delete('/api/documents/:id', (req, res) => {
   try {
     const trackFilePath = getTrackFilePath(req.params.id);
@@ -173,16 +177,31 @@ app.delete('/api/documents/:id', (req, res) => {
   }
 });
 
-// Start REST API server
-const API_PORT = 3001;
-app.listen(API_PORT, () => {
-  console.log(`REST API server running at http://localhost:${API_PORT}`);
-});
+// Serve static files in production
+if (IS_PRODUCTION) {
+  const distPath = path.join(__dirname, '../dist');
+  app.use(express.static(distPath));
+  // Catch-all for SPA routing - serve index.html for any non-API, non-static routes
+  app.use((_req, res, next) => {
+    // Skip if it's an API route
+    if (_req.path.startsWith('/api')) {
+      return next();
+    }
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
 
-// ==================== Hocuspocus WebSocket Server ====================
+// ==================== HTTP Server with WebSocket ====================
 
-const server = new Server({
-  port: 1234,
+const httpServer = createServer(app);
+
+// Create WebSocket server for Hocuspocus
+const wss = new WebSocketServer({ noServer: true });
+
+// Hocuspocus server configuration
+const hocuspocus = new Hocuspocus({
+  // Suppress noise from health checks
+  quiet: true,
 
   async onConnect({ documentName }) {
     console.log(`Client connected to document: ${documentName}`);
@@ -200,13 +219,11 @@ const server = new Server({
         const data = JSON.parse(fs.readFileSync(trackFilePath, 'utf-8')) as TrackFileData;
         console.log(`Loading document from: ${trackFilePath}`);
 
-        // Apply saved Yjs state
         if (data.yDocState && data.yDocState.length > 0) {
           const state = new Uint8Array(data.yDocState);
           Y.applyUpdate(document, state);
         }
 
-        // If there are saved changes, ensure they're in the Yjs array
         if (data.changes && data.changes.length > 0) {
           const ychanges = document.getArray('trackChanges');
           if (ychanges.length === 0) {
@@ -227,14 +244,10 @@ const server = new Server({
     const trackFilePath = getTrackFilePath(documentName);
 
     try {
-      // Get track changes from Yjs
       const ychanges = document.getArray('trackChanges');
       const changes = ychanges.toArray();
-
-      // Encode Yjs document state
       const state = Y.encodeStateAsUpdate(document);
 
-      // Load existing data to preserve title and createdAt
       let existingData: Partial<TrackFileData> = {};
       if (fs.existsSync(trackFilePath)) {
         try {
@@ -263,6 +276,41 @@ const server = new Server({
   },
 });
 
-server.listen();
-console.log('Hocuspocus server is running on port 1234');
-console.log(`Track files will be stored in: ${path.resolve(DATA_DIR)}`);
+// Handle WebSocket upgrade
+httpServer.on('upgrade', (request, socket, head) => {
+  // Filter out health check probes (they often have no valid URL)
+  const url = request.url || '/';
+
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    // Add error handler to gracefully handle malformed messages (e.g., from Cloudflare health checks)
+    ws.on('error', (error: Error) => {
+      if (error.message.includes('encoding') || error.message.includes('utf-8')) {
+        // Silently ignore encoding errors from health check probes
+        return;
+      }
+      console.error('WebSocket error:', error.message);
+    });
+
+    hocuspocus.handleConnection(ws, request);
+  });
+});
+
+// Global error handler to prevent crashes from unhandled errors
+process.on('uncaughtException', (error) => {
+  if (error.message.includes('encoding') || error.message.includes('utf-8')) {
+    // Silently ignore encoding errors from Cloudflare health checks
+    return;
+  }
+  console.error('Uncaught exception:', error);
+});
+
+// Start server
+httpServer.listen(PORT, () => {
+  console.log(`\n🚀 Tandem server running at http://localhost:${PORT}`);
+  console.log(`   WebSocket: ws://localhost:${PORT}`);
+  console.log(`   API: http://localhost:${PORT}/api`);
+  if (IS_PRODUCTION) {
+    console.log(`   Frontend: http://localhost:${PORT}`);
+  }
+  console.log(`   Data: ${path.resolve(DATA_DIR)}\n`);
+});

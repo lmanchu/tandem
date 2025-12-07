@@ -16,13 +16,21 @@ interface TandemEditorProps {
   author: Author;
   serverUrl?: string;
   onContentChange?: (content: string) => void;
+  onEditorReady?: (editor: ReturnType<typeof useEditor>) => void;
 }
+
+// Get WebSocket URL based on current location
+const getWsUrl = () => {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}`;
+};
 
 export function TandemEditor({
   documentId,
   author,
-  serverUrl = 'ws://localhost:1234',
+  serverUrl = getWsUrl(),
   onContentChange,
+  onEditorReady,
 }: TandemEditorProps) {
   const [isConnected, setIsConnected] = useState(false);
   const [trackingEnabled, setTrackingEnabled] = useState(false);
@@ -108,6 +116,13 @@ export function TandemEditor({
       setChanges((prev) => prev.filter((c) => c.id !== changeId));
     }
   };
+
+  // Notify parent when editor is ready
+  useEffect(() => {
+    if (editor && onEditorReady) {
+      onEditorReady(editor);
+    }
+  }, [editor, onEditorReady]);
 
   // Cleanup on unmount
   useEffect(() => {

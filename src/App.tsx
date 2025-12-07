@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { TandemEditor } from './components/TandemEditor';
 import { FileBrowser } from './components/FileBrowser';
+import { ServerSettings } from './components/ServerSettings';
 import { createAuthor } from './types/track';
-import { FileText } from 'lucide-react';
+import { FileText, Settings } from 'lucide-react';
+import type { Editor } from '@tiptap/react';
+import { marked } from 'marked';
 
 // Create a default human author
 const currentUser = createAuthor('human', 'Leo', {
@@ -11,6 +14,49 @@ const currentUser = createAuthor('human', 'Leo', {
 
 function App() {
   const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
+  const [pendingImport, setPendingImport] = useState<{ documentId: string; content: string } | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const editorRef = useRef<Editor | null>(null);
+
+  // Listen for Electron menu open-settings event
+  useEffect(() => {
+    if (window.tandemElectron?.onOpenSettings) {
+      window.tandemElectron.onOpenSettings(() => {
+        setShowSettings(true);
+      });
+    }
+  }, []);
+
+  const handleEditorReady = useCallback((editor: Editor | null) => {
+    editorRef.current = editor;
+    // If there's a pending import, apply it now
+    if (editor && pendingImport && pendingImport.documentId === currentDocumentId) {
+      setTimeout(() => {
+        editor.commands.setContent(pendingImport.content);
+        setPendingImport(null);
+      }, 100);
+    }
+  }, [pendingImport, currentDocumentId]);
+
+  const handleImportFile = useCallback((documentId: string, content: string) => {
+    // Convert Markdown to HTML using marked
+    const htmlContent = marked.parse(content, { async: false }) as string;
+
+    if (editorRef.current && documentId === currentDocumentId) {
+      editorRef.current.commands.setContent(htmlContent);
+    } else {
+      // Store for later when editor is ready
+      setPendingImport({ documentId, content: htmlContent });
+    }
+  }, [currentDocumentId]);
+
+  const handleExportRequest = useCallback(() => {
+    if (editorRef.current) {
+      // Get markdown content - for now we'll use HTML, but ideally convert to markdown
+      return editorRef.current.storage.markdown?.getMarkdown() || editorRef.current.getText();
+    }
+    return null;
+  }, []);
 
   return (
     <div className="h-screen w-full bg-gray-50 dark:bg-zinc-950 flex flex-col">
@@ -26,9 +72,18 @@ function App() {
             </span>
           )}
         </div>
-        <span className="text-xs text-gray-400 dark:text-zinc-500 font-medium tracking-wide hidden sm:block">
-          Human + AI Collaboration
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-400 dark:text-zinc-500 font-medium tracking-wide hidden sm:block">
+            Human + AI Collaboration
+          </span>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+            title="伺服器設定"
+          >
+            <Settings className="w-4 h-4 text-gray-500 dark:text-zinc-400" />
+          </button>
+        </div>
       </header>
 
       {/* Main Content */}
@@ -37,6 +92,8 @@ function App() {
         <FileBrowser
           currentDocumentId={currentDocumentId}
           onDocumentSelect={setCurrentDocumentId}
+          onImportFile={handleImportFile}
+          onExportRequest={handleExportRequest}
         />
 
         {/* Editor Area */}
@@ -46,6 +103,7 @@ function App() {
               key={currentDocumentId}
               documentId={currentDocumentId}
               author={currentUser}
+              onEditorReady={handleEditorReady}
               onContentChange={(content) => {
                 console.log('Content changed:', content.substring(0, 100));
               }}
@@ -70,6 +128,9 @@ function App() {
       <footer className="h-8 flex items-center justify-center text-[10px] text-gray-400 dark:text-zinc-600 uppercase tracking-widest font-medium border-t border-gray-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
         Tandem 3.0
       </footer>
+
+      {/* Server Settings Modal */}
+      <ServerSettings isOpen={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   );
 }
