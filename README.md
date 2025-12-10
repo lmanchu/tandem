@@ -12,6 +12,9 @@ Real-time collaborative document editor with AI integration and MCP support.
 - **AI Assistant** - Multi-provider AI (Claude, Gemini, Ollama) for document assistance
 - **Version History** - View and restore previous document versions
 - **MCP Integration** - Let AI tools directly read/write Tandem documents
+- **Export/Import** - Export to Markdown, HTML, or PDF; import Markdown files
+- **Document Sharing** - Generate shareable links with view or edit permissions
+- **@ Mentions** - Tag and notify collaborators with @ mentions
 - **Dark Mode** - Full dark theme support
 - **Electron App** - Desktop application for macOS
 

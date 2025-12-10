@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { DragEvent } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import type { DragEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
   FileText,
   Plus,
@@ -15,6 +15,9 @@ import {
   Check,
   History,
   Copy,
+  Search,
+  X,
+  Pencil,
 } from 'lucide-react';
 import { VersionHistory } from './VersionHistory';
 import { getAuthHeaders } from './PasswordGate';
@@ -51,8 +54,61 @@ export function FileBrowser({
   const [copiedDocId, setCopiedDocId] = useState<string | null>(null);
   const [copiedMcpId, setCopiedMcpId] = useState<string | null>(null);
   const [versionHistoryDocId, setVersionHistoryDocId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const [renamingDocId, setRenamingDocId] = useState<string | null>(null);
+  const [renameTitle, setRenameTitle] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const dragCounterRef = useRef(0);
+
+  // Filter documents based on search query
+  const filteredDocuments = useMemo(() => {
+    if (!searchQuery.trim()) return documents;
+    const query = searchQuery.toLowerCase();
+    return documents.filter((doc) =>
+      doc.title.toLowerCase().includes(query) ||
+      doc.id.toLowerCase().includes(query)
+    );
+  }, [documents, searchQuery]);
+
+  // Keyboard navigation handler
+  const handleListKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (filteredDocuments.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setFocusedIndex((prev) =>
+          prev < filteredDocuments.length - 1 ? prev + 1 : 0
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setFocusedIndex((prev) =>
+          prev > 0 ? prev - 1 : filteredDocuments.length - 1
+        );
+        break;
+      case 'Enter':
+        if (focusedIndex >= 0 && focusedIndex < filteredDocuments.length) {
+          onDocumentSelect(filteredDocuments[focusedIndex].id);
+        }
+        break;
+      case 'Escape':
+        if (searchQuery) {
+          setSearchQuery('');
+          setFocusedIndex(-1);
+        }
+        break;
+    }
+  }, [filteredDocuments, focusedIndex, onDocumentSelect, searchQuery]);
+
+  // Reset focused index when search changes
+  useEffect(() => {
+    setFocusedIndex(searchQuery ? 0 : -1);
+  }, [searchQuery]);
 
   const handleCopyLink = (docId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -134,6 +190,42 @@ export function FileBrowser({
       }
     } catch (error) {
       console.error('Failed to delete document:', error);
+    }
+  };
+
+  const startRename = (docId: string, currentTitle: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRenamingDocId(docId);
+    setRenameTitle(currentTitle);
+    // Focus input after state update
+    setTimeout(() => renameInputRef.current?.focus(), 0);
+  };
+
+  const handleRenameDocument = async () => {
+    if (!renamingDocId || !renameTitle.trim()) {
+      setRenamingDocId(null);
+      setRenameTitle('');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${apiUrl}/api/documents/${renamingDocId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ title: renameTitle.trim() }),
+      });
+
+      if (response.ok) {
+        const updated = await response.json();
+        setDocuments((prev) =>
+          prev.map((d) => (d.id === renamingDocId ? { ...d, title: updated.title } : d))
+        );
+      }
+    } catch (error) {
+      console.error('Failed to rename document:', error);
+    } finally {
+      setRenamingDocId(null);
+      setRenameTitle('');
     }
   };
 
@@ -346,51 +438,84 @@ export function FileBrowser({
       />
 
       {/* Header */}
-      <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <FolderOpen className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
-          <span className="font-medium text-zinc-800 dark:text-zinc-200">文件</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setIsCreating(true)}
-            className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded transition-colors"
-            title="新增文件"
-          >
-            <Plus className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
-          </button>
-          <button
-            onClick={handleImportClick}
-            className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded transition-colors"
-            title="匯入 Markdown 檔案"
-          >
-            <Upload className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
-          </button>
-          {currentDocumentId && onExportRequest && (
+      <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <FolderOpen className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
+            <span className="font-medium text-zinc-800 dark:text-zinc-200">文件</span>
+          </div>
+          <div className="flex items-center gap-1">
             <button
-              onClick={handleExport}
+              onClick={() => setIsCreating(true)}
               className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded transition-colors"
-              title="匯出為 Markdown"
+              title="新增文件"
             >
-              <Download className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+              <Plus className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+            </button>
+            <button
+              onClick={handleImportClick}
+              className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded transition-colors"
+              title="匯入 Markdown 檔案"
+            >
+              <Upload className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+            </button>
+            {currentDocumentId && onExportRequest && (
+              <button
+                onClick={handleExport}
+                className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded transition-colors"
+                title="匯出為 Markdown"
+              >
+                <Download className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+              </button>
+            )}
+            <button
+              onClick={fetchDocuments}
+              className={`p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded transition-colors ${
+                isLoading ? 'animate-spin' : ''
+              }`}
+              title="重新整理"
+            >
+              <RefreshCw className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+            </button>
+            <button
+              onClick={() => setIsCollapsed(true)}
+              className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded transition-colors"
+              title="收合"
+            >
+              <ChevronLeft className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+            </button>
+          </div>
+        </div>
+        {/* Search Input */}
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="搜尋文件..."
+            className="w-full pl-8 pr-8 py-1.5 text-sm border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                listRef.current?.focus();
+                handleListKeyDown(e as unknown as ReactKeyboardEvent<HTMLDivElement>);
+              } else if (e.key === 'Enter' && filteredDocuments.length > 0) {
+                onDocumentSelect(filteredDocuments[0].id);
+              } else if (e.key === 'Escape') {
+                setSearchQuery('');
+              }
+            }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded"
+            >
+              <X className="w-3.5 h-3.5 text-zinc-400" />
             </button>
           )}
-          <button
-            onClick={fetchDocuments}
-            className={`p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded transition-colors ${
-              isLoading ? 'animate-spin' : ''
-            }`}
-            title="重新整理"
-          >
-            <RefreshCw className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
-          </button>
-          <button
-            onClick={() => setIsCollapsed(true)}
-            className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded transition-colors"
-            title="收合"
-          >
-            <ChevronLeft className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
-          </button>
         </div>
       </div>
 
@@ -433,7 +558,12 @@ export function FileBrowser({
       )}
 
       {/* Document List */}
-      <div className="flex-1 overflow-y-auto">
+      <div
+        ref={listRef}
+        className="flex-1 overflow-y-auto focus:outline-none"
+        tabIndex={0}
+        onKeyDown={handleListKeyDown}
+      >
         {documents.length === 0 && !isLoading && (
           <div className="p-4 text-center text-zinc-500 dark:text-zinc-400 text-sm">
             <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -442,13 +572,25 @@ export function FileBrowser({
           </div>
         )}
 
-        {documents.map((doc) => (
+        {searchQuery && filteredDocuments.length === 0 && documents.length > 0 && (
+          <div className="p-4 text-center text-zinc-500 dark:text-zinc-400 text-sm">
+            <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p>找不到符合的文件</p>
+            <p className="text-xs mt-1">嘗試其他關鍵字</p>
+          </div>
+        )}
+
+        {filteredDocuments.map((doc, index) => (
           <div
             key={doc.id}
             onClick={() => onDocumentSelect(doc.id)}
             className={`p-3 border-b border-zinc-100 dark:border-zinc-800 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors group ${
               currentDocumentId === doc.id
                 ? 'bg-blue-50 dark:bg-blue-900/20 border-l-2 border-l-blue-500'
+                : ''
+            } ${
+              focusedIndex === index
+                ? 'ring-2 ring-inset ring-blue-400 dark:ring-blue-500'
                 : ''
             }`}
           >
@@ -461,17 +603,46 @@ export function FileBrowser({
                       : 'text-zinc-400 dark:text-zinc-500'
                   }`}
                 />
-                <span
-                  className={`text-sm truncate ${
-                    currentDocumentId === doc.id
-                      ? 'text-blue-700 dark:text-blue-300 font-medium'
-                      : 'text-zinc-700 dark:text-zinc-300'
-                  }`}
-                >
-                  {doc.title}
-                </span>
+                {renamingDocId === doc.id ? (
+                  <input
+                    ref={renameInputRef}
+                    type="text"
+                    value={renameTitle}
+                    onChange={(e) => setRenameTitle(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter') {
+                        handleRenameDocument();
+                      } else if (e.key === 'Escape') {
+                        setRenamingDocId(null);
+                        setRenameTitle('');
+                      }
+                    }}
+                    onBlur={handleRenameDocument}
+                    className="flex-1 min-w-0 px-2 py-0.5 text-sm border border-blue-400 rounded bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                ) : (
+                  <span
+                    className={`text-sm truncate ${
+                      currentDocumentId === doc.id
+                        ? 'text-blue-700 dark:text-blue-300 font-medium'
+                        : 'text-zinc-700 dark:text-zinc-300'
+                    }`}
+                    onDoubleClick={(e) => startRename(doc.id, doc.title, e)}
+                  >
+                    {doc.title}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                <button
+                  onClick={(e) => startRename(doc.id, doc.title, e)}
+                  className="p-1 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 rounded"
+                  title="重新命名"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-500" />
+                </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();

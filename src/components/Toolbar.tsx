@@ -18,10 +18,13 @@ import {
     Bot,
     Table,
     Search,
-    Keyboard
+    Keyboard,
+    MessageCircle
 } from 'lucide-react';
 import type { Author } from '../types/track';
 import type { Collaborator } from './TandemEditor';
+import { ExportMenu } from './ExportMenu';
+import { ShareMenu } from './ShareMenu';
 
 interface ToolbarProps {
     editor: Editor | null;
@@ -37,6 +40,13 @@ interface ToolbarProps {
     onInsertTable?: () => void;
     onOpenSearch?: () => void;
     onOpenShortcuts?: () => void;
+    commentsEnabled?: boolean;
+    onToggleComments?: () => void;
+    onAddComment?: () => void;
+    commentsCount?: number;
+    documentTitle?: string;
+    documentId?: string;
+    onImportMarkdown?: (content: string) => void;
 }
 
 // Format relative time
@@ -63,7 +73,14 @@ export function Toolbar({
     onToggleAI,
     onInsertTable,
     onOpenSearch,
-    onOpenShortcuts
+    onOpenShortcuts,
+    commentsEnabled = false,
+    onToggleComments,
+    onAddComment,
+    commentsCount = 0,
+    documentTitle = 'document',
+    documentId = '',
+    onImportMarkdown
 }: ToolbarProps) {
     const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -207,6 +224,33 @@ export function Toolbar({
                     </button>
                 )}
 
+                {onToggleComments && (
+                    <button
+                        onClick={onToggleComments}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${commentsEnabled
+                            ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
+                            : 'bg-gray-100 text-gray-600 dark:bg-zinc-800 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                            }`}
+                    >
+                        <MessageCircle className="w-4 h-4" />
+                        留言
+                        {commentsCount > 0 && (
+                            <span className="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-yellow-200 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200">
+                                {commentsCount}
+                            </span>
+                        )}
+                    </button>
+                )}
+
+                {onAddComment && (
+                    <ToolbarButton
+                        onClick={onAddComment}
+                        title="新增留言 (選取文字後點擊)"
+                    >
+                        <MessageCircle className="w-4 h-4" />
+                    </ToolbarButton>
+                )}
+
                 <div className="w-px h-6 bg-gray-200 dark:bg-zinc-800 mx-2" />
 
                 {/* Search button */}
@@ -227,6 +271,23 @@ export function Toolbar({
                     >
                         <Keyboard className="w-4 h-4" />
                     </ToolbarButton>
+                )}
+
+                <div className="w-px h-6 bg-gray-200 dark:bg-zinc-800 mx-2" />
+
+                {/* Export Menu */}
+                <ExportMenu
+                    editor={editor}
+                    documentTitle={documentTitle}
+                    onImportMarkdown={onImportMarkdown}
+                />
+
+                {/* Share Menu */}
+                {documentId && (
+                    <ShareMenu
+                        documentId={documentId}
+                        documentTitle={documentTitle}
+                    />
                 )}
             </div>
 

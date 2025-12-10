@@ -2,6 +2,28 @@
 
 All notable changes to Tandem will be documented in this file.
 
+## [1.4.0] - 2025-12-10
+
+### Added
+- **Export/Import Menu** - Comprehensive document export and import functionality
+  - Export to Markdown (.md) with TurndownService conversion
+  - Export to HTML with styled formatting
+  - Export to PDF via print dialog
+  - Import Markdown files (.md, .markdown, .txt)
+- **Share Menu** - Share documents with customizable access
+  - Generate shareable links with view or edit permissions
+  - Copy link to clipboard with visual feedback
+  - Native Web Share API integration for mobile devices
+  - Public/Private toggle with visual indicators
+- **@ Mentions** - Tag collaborators in documents
+  - Type @ to trigger user suggestions
+  - Styled mention badges with user colors
+  - Backspace to convert mention back to text
+
+### Changed
+- Updated Toolbar with Export and Share menu buttons
+- Enhanced UI with Chinese localization for export options
+
 ## [1.3.0] - 2025-12-08
 
 ### Added

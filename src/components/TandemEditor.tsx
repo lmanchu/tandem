@@ -15,12 +15,18 @@ import { HocuspocusProvider } from '@hocuspocus/provider';
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import type { Author, Change } from '../types/track';
 import { TrackChanges } from '../extensions/TrackChanges';
+import { Comments, type CommentData } from '../extensions/Comments';
+import { Mention, type MentionUser } from '../extensions/Mention';
 import { Toolbar } from './Toolbar';
 import { TrackChangesSidebar } from './TrackChangesSidebar';
+import { CommentsSidebar } from './CommentsSidebar';
 import { AIAssistant } from './AIAssistant';
 import { AISettingsModal } from './AISettingsModal';
 import { SearchReplace } from './SearchReplace';
 import { KeyboardShortcuts } from './KeyboardShortcuts';
+import { MentionList, type MentionListRef } from './MentionList';
+import { ReactRenderer } from '@tiptap/react';
+import tippy, { type Instance } from 'tippy.js';
 
 // Create lowlight instance with common languages
 const lowlight = createLowlight(common);
@@ -63,6 +69,8 @@ export function TandemEditor({
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [commentsEnabled, setCommentsEnabled] = useState(false);
+  const [comments, setComments] = useState<CommentData[]>([]);
 
   const handleChangeRecorded = useCallback((change: Change) => {
     setChanges((prev) => [...prev, change]);
@@ -209,6 +217,83 @@ export function TandemEditor({
           class: 'bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-sm font-mono',
         },
       }),
+      // Comments extension
+      Comments.configure({
+        ydoc,
+        onCommentAdded: (comment) => {
+          setComments((prev) => [...prev, comment]);
+        },
+        onCommentRemoved: (commentId) => {
+          setComments((prev) => prev.filter((c) => c.id !== commentId));
+        },
+        onCommentsUpdated: setComments,
+      }),
+      // Mention extension for @mentions
+      Mention.configure({
+        suggestion: {
+          items: ({ query }: { query: string }) => {
+            // Get all users from collaborators + current author
+            const allUsers: MentionUser[] = [
+              { id: author.id, name: author.name, color: author.color },
+              ...collaborators.map((c) => ({
+                id: String(c.clientId),
+                name: c.name,
+                color: c.color,
+              })),
+            ];
+            return allUsers
+              .filter((user) =>
+                user.name.toLowerCase().includes(query.toLowerCase())
+              )
+              .slice(0, 5);
+          },
+          render: () => {
+            let component: ReactRenderer<MentionListRef> | null = null;
+            let popup: Instance[] | null = null;
+
+            return {
+              onStart: (props) => {
+                component = new ReactRenderer(MentionList, {
+                  props,
+                  editor: props.editor,
+                });
+
+                if (!props.clientRect) return;
+
+                popup = tippy('body', {
+                  getReferenceClientRect: props.clientRect as () => DOMRect,
+                  appendTo: () => document.body,
+                  content: component.element,
+                  showOnCreate: true,
+                  interactive: true,
+                  trigger: 'manual',
+                  placement: 'bottom-start',
+                });
+              },
+              onUpdate(props) {
+                component?.updateProps(props);
+
+                if (!props.clientRect) return;
+
+                popup?.[0]?.setProps({
+                  getReferenceClientRect: props.clientRect as () => DOMRect,
+                });
+              },
+              onKeyDown(props) {
+                if (props.event.key === 'Escape') {
+                  popup?.[0]?.hide();
+                  return true;
+                }
+                return component?.ref?.onKeyDown(props) ?? false;
+              },
+              onExit() {
+                popup?.[0]?.destroy();
+                component?.destroy();
+              },
+            };
+          },
+        },
+      }),
     ],
     onUpdate: ({ editor }) => {
       if (onContentChange) {
@@ -245,6 +330,90 @@ export function TandemEditor({
   const insertTable = () => {
     if (editor) {
       editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+    }
+  };
+
+  // Add comment to selected text
+  const addComment = () => {
+    if (!editor) return;
+    const { from, to } = editor.state.selection;
+    if (from === to) {
+      alert('請先選取要留言的文字');
+      return;
+    }
+
+    const content = prompt('輸入留言內容：');
+    if (!content?.trim()) return;
+
+    const commentId = crypto.randomUUID();
+    editor.commands.addComment({
+      id: commentId,
+      content: content.trim(),
+      authorId: author.id,
+      authorName: author.name,
+      authorColor: author.color,
+      timestamp: new Date().toISOString(),
+    });
+    setCommentsEnabled(true);
+  };
+
+  // Resolve comment
+  const resolveComment = (commentId: string) => {
+    if (editor) {
+      editor.commands.resolveComment(commentId, author.name);
+      setComments((prev) =>
+        prev.map((c) =>
+          c.id === commentId
+            ? { ...c, resolved: true, resolvedBy: author.name, resolvedAt: new Date().toISOString() }
+            : c
+        )
+      );
+    }
+  };
+
+  // Unresolve comment
+  const unresolveComment = (commentId: string) => {
+    if (editor) {
+      editor.commands.unresolveComment(commentId);
+      setComments((prev) =>
+        prev.map((c) =>
+          c.id === commentId
+            ? { ...c, resolved: false, resolvedBy: undefined, resolvedAt: undefined }
+            : c
+        )
+      );
+    }
+  };
+
+  // Delete comment
+  const deleteComment = (commentId: string) => {
+    if (editor) {
+      editor.commands.removeComment(commentId);
+    }
+  };
+
+  // Reply to comment
+  const replyToComment = (commentId: string, content: string) => {
+    const reply = {
+      id: crypto.randomUUID(),
+      content,
+      authorId: author.id,
+      authorName: author.name,
+      authorColor: author.color,
+      timestamp: new Date().toISOString(),
+    };
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === commentId ? { ...c, replies: [...c.replies, reply] } : c
+      )
+    );
+    // Also update in ydoc if available
+    if (ydoc) {
+      const commentsMap = ydoc.getMap('comments');
+      const comment = commentsMap.get(commentId) as CommentData | undefined;
+      if (comment) {
+        commentsMap.set(commentId, { ...comment, replies: [...comment.replies, reply] });
+      }
     }
   };
 
@@ -318,6 +487,20 @@ export function TandemEditor({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [searchOpen, shortcutsOpen]);
 
+  // Unsaved changes warning
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!isSynced && isConnected) {
+        e.preventDefault();
+        e.returnValue = '您有未儲存的變更，確定要離開嗎？';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isSynced, isConnected]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -342,6 +525,12 @@ export function TandemEditor({
         onInsertTable={insertTable}
         onOpenSearch={() => setSearchOpen(true)}
         onOpenShortcuts={() => setShortcutsOpen(true)}
+        commentsEnabled={commentsEnabled}
+        onToggleComments={() => setCommentsEnabled(!commentsEnabled)}
+        onAddComment={addComment}
+        commentsCount={comments.filter((c) => !c.resolved).length}
+        documentTitle={documentId}
+        documentId={documentId}
       />
 
       <div className="flex flex-1 overflow-hidden relative">
@@ -365,6 +554,17 @@ export function TandemEditor({
             onClose={() => setAiEnabled(false)}
             onOpenSettings={() => setAiSettingsOpen(true)}
             editor={editor}
+          />
+        )}
+
+        {commentsEnabled && (
+          <CommentsSidebar
+            comments={comments}
+            currentAuthor={author}
+            onResolve={resolveComment}
+            onUnresolve={unresolveComment}
+            onDelete={deleteComment}
+            onReply={replyToComment}
           />
         )}
 
