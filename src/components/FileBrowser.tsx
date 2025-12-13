@@ -6,9 +6,11 @@ import {
   Trash2,
   RefreshCw,
   FolderOpen,
+  FolderClosed,
   Clock,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Upload,
   Download,
   Link,
@@ -65,6 +67,7 @@ export function FileBrowser({
   const [showTagFilter, setShowTagFilter] = useState(false);
   const [availableTags, setAvailableTags] = useState<DocumentTag[]>([]);
   const [showTrash, setShowTrash] = useState(false);
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tagFilterRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -115,6 +118,49 @@ export function FileBrowser({
 
     return result;
   }, [documents, searchQuery, selectedTagIds]);
+
+  // Group documents by project (documents with "/" in their title)
+  const groupedDocuments = useMemo(() => {
+    const projects: Record<string, DocumentInfo[]> = {};
+    const rootDocs: DocumentInfo[] = [];
+
+    filteredDocuments.forEach((doc) => {
+      const slashIndex = doc.title.indexOf('/');
+      if (slashIndex > 0) {
+        const projectName = doc.title.substring(0, slashIndex);
+        if (!projects[projectName]) {
+          projects[projectName] = [];
+        }
+        projects[projectName].push(doc);
+      } else {
+        rootDocs.push(doc);
+      }
+    });
+
+    // Sort projects alphabetically
+    const sortedProjects = Object.keys(projects).sort();
+
+    return { projects, sortedProjects, rootDocs };
+  }, [filteredDocuments]);
+
+  // Toggle project expansion
+  const toggleProject = (projectName: string) => {
+    setExpandedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectName)) {
+        next.delete(projectName);
+      } else {
+        next.add(projectName);
+      }
+      return next;
+    });
+  };
+
+  // Get display name (without project prefix)
+  const getDisplayName = (title: string) => {
+    const slashIndex = title.indexOf('/');
+    return slashIndex > 0 ? title.substring(slashIndex + 1) : title;
+  };
 
   // Keyboard navigation handler
   const handleListKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -726,7 +772,152 @@ export function FileBrowser({
           </div>
         )}
 
-        {filteredDocuments.map((doc, index) => (
+        {/* Project Folders */}
+        {groupedDocuments.sortedProjects.map((projectName) => (
+          <div key={`project-${projectName}`}>
+            {/* Project Header */}
+            <div
+              onClick={() => toggleProject(projectName)}
+              className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-800 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center gap-2 bg-zinc-50/50 dark:bg-zinc-800/50"
+            >
+              {expandedProjects.has(projectName) ? (
+                <ChevronDown className="w-4 h-4 text-zinc-500" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-zinc-500" />
+              )}
+              {expandedProjects.has(projectName) ? (
+                <FolderOpen className="w-4 h-4 text-amber-500" />
+              ) : (
+                <FolderClosed className="w-4 h-4 text-amber-500" />
+              )}
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                {projectName}
+              </span>
+              <span className="text-xs text-zinc-400 dark:text-zinc-500">
+                ({groupedDocuments.projects[projectName].length})
+              </span>
+            </div>
+            {/* Project Documents */}
+            {expandedProjects.has(projectName) &&
+              groupedDocuments.projects[projectName].map((doc) => (
+                <div
+                  key={doc.id}
+                  onClick={() => onDocumentSelect(doc.id)}
+                  className={`p-3 pl-10 border-b border-zinc-100 dark:border-zinc-800 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors group ${
+                    currentDocumentId === doc.id
+                      ? 'bg-blue-50 dark:bg-blue-900/20 border-l-2 border-l-blue-500'
+                      : ''
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <FileText
+                        className={`w-4 h-4 flex-shrink-0 ${
+                          currentDocumentId === doc.id
+                            ? 'text-blue-500'
+                            : 'text-zinc-400 dark:text-zinc-500'
+                        }`}
+                      />
+                      {renamingDocId === doc.id ? (
+                        <input
+                          ref={renameInputRef}
+                          type="text"
+                          value={renameTitle}
+                          onChange={(e) => setRenameTitle(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (e.key === 'Enter') {
+                              handleRenameDocument();
+                            } else if (e.key === 'Escape') {
+                              setRenamingDocId(null);
+                              setRenameTitle('');
+                            }
+                          }}
+                          onBlur={handleRenameDocument}
+                          className="flex-1 min-w-0 px-2 py-0.5 text-sm border border-blue-400 rounded bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <span
+                          className={`text-sm truncate ${
+                            currentDocumentId === doc.id
+                              ? 'text-blue-700 dark:text-blue-300 font-medium'
+                              : 'text-zinc-700 dark:text-zinc-300'
+                          }`}
+                          onDoubleClick={(e) => startRename(doc.id, doc.title, e)}
+                        >
+                          {getDisplayName(doc.title)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                      <button
+                        onClick={(e) => startRename(doc.id, doc.title, e)}
+                        className="p-1 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 rounded"
+                        title="重新命名"
+                      >
+                        <Pencil className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-500" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVersionHistoryDocId(doc.id);
+                        }}
+                        className="p-1 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded"
+                        title="版本歷史"
+                      >
+                        <History className="w-3.5 h-3.5 text-purple-500" />
+                      </button>
+                      <button
+                        onClick={(e) => handleCopyMcpId(doc.id, e)}
+                        className="p-1 hover:bg-green-100 dark:hover:bg-green-900/30 rounded"
+                        title="複製 MCP 文件連結"
+                      >
+                        {copiedMcpId === doc.id ? (
+                          <Check className="w-3.5 h-3.5 text-green-500" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5 text-green-600" />
+                        )}
+                      </button>
+                      <button
+                        onClick={(e) => handleCopyLink(doc.id, e)}
+                        className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded"
+                        title="複製分享連結"
+                      >
+                        {copiedDocId === doc.id ? (
+                          <Check className="w-3.5 h-3.5 text-green-500" />
+                        ) : (
+                          <Link className="w-3.5 h-3.5 text-blue-500" />
+                        )}
+                      </button>
+                      <button
+                        onClick={(e) => handleDeleteDocument(doc.id, e)}
+                        className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"
+                        title="刪除"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 mt-1 ml-6 text-xs text-zinc-400 dark:text-zinc-500">
+                    <Clock className="w-3 h-3" />
+                    <span>{formatDate(doc.updatedAt)}</span>
+                    {doc.changesCount > 0 && (
+                      <span className="ml-2 px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded text-[10px]">
+                        {doc.changesCount} 修改
+                      </span>
+                    )}
+                  </div>
+                  <div className="ml-6 mt-1" onClick={(e) => e.stopPropagation()}>
+                    <TagManager documentId={doc.id} compact />
+                  </div>
+                </div>
+              ))}
+          </div>
+        ))}
+
+        {/* Root Documents (no project prefix) */}
+        {groupedDocuments.rootDocs.map((doc, index) => (
           <div
             key={doc.id}
             onClick={() => onDocumentSelect(doc.id)}

@@ -8,6 +8,7 @@ import * as Y from 'yjs';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { fileURLToPath } from 'url';
+import { marked } from 'marked';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -429,7 +430,7 @@ app.get('/api/documents/:id/content', requireAuth, (req, res) => {
     const state = new Uint8Array(data.yDocState);
     Y.applyUpdate(doc, state);
 
-    // Get prosemirror content from Yjs
+    // Get content from Yjs (TipTap Collaboration uses 'default' field by default)
     const fragment = doc.getXmlFragment('default');
     const content = yXmlFragmentToHtml(fragment);
 
@@ -456,12 +457,20 @@ app.put('/api/documents/:id/content', requireAuth, (req, res) => {
 
     const data = JSON.parse(fs.readFileSync(trackFilePath, 'utf-8')) as TrackFileData;
 
+    // Detect if content is markdown or HTML
+    // Markdown typically starts with # or doesn't start with <
+    const isMarkdown = !content.trim().startsWith('<') || content.trim().startsWith('#');
+    const htmlContent = isMarkdown ? marked.parse(content) as string : content;
+
+    console.log(`Writing content to ${req.params.id}, isMarkdown: ${isMarkdown}, htmlLength: ${htmlContent.length}`);
+
     // Create new Yjs doc with the HTML content
+    // TipTap Collaboration extension uses 'default' field by default
     const doc = new Y.Doc();
     const fragment = doc.getXmlFragment('default');
 
     // Convert HTML to Yjs XML structure
-    htmlToYXmlFragment(content, fragment);
+    htmlToYXmlFragment(htmlContent, fragment);
 
     // Save version before updating
     if (data.yDocState && data.yDocState.length > 0) {
@@ -476,12 +485,63 @@ app.put('/api/documents/:id/content', requireAuth, (req, res) => {
     fs.writeFileSync(trackFilePath, JSON.stringify(data, null, 2));
     console.log(`Document content updated via API: ${req.params.id}`);
 
-    res.json({ success: true, message: 'Content updated' });
+    // Force Hocuspocus to reload from disk by removing cached document
+    // This avoids Y.js merge conflicts with different state formats
+    const hocuspocusDoc = hocuspocus.documents.get(req.params.id);
+    if (hocuspocusDoc) {
+      console.log(`Evicting Hocuspocus cached document: ${req.params.id}`);
+      // Close all connections to this document so clients reconnect
+      hocuspocus.closeConnections(req.params.id);
+    }
+
+    res.json({ success: true, message: 'Content updated. Please refresh to see changes.' });
   } catch (error) {
     console.error('Error updating document content:', error);
     res.status(500).json({ error: 'Failed to update document content' });
   }
 });
+
+// Map TipTap mark names back to HTML tags
+function markToHtmlTag(mark: string): string {
+  const markToTag: Record<string, string> = {
+    'bold': 'strong',
+    'italic': 'em',
+    'code': 'code',
+    'link': 'a',
+    'underline': 'u',
+    'strike': 's',
+  };
+  return markToTag[mark] || mark;
+}
+
+// Convert XmlText delta with marks to HTML
+function xmlTextToHtml(xmlText: Y.XmlText): string {
+  const delta = xmlText.toDelta();
+  let html = '';
+
+  for (const op of delta) {
+    if (typeof op.insert !== 'string') continue;
+
+    let text = escapeHtml(op.insert);
+    const attrs = op.attributes || {};
+
+    // Wrap text with mark tags
+    for (const [mark, value] of Object.entries(attrs)) {
+      if (value) {
+        const tag = markToHtmlTag(mark);
+        if (mark === 'link' && typeof value === 'object' && (value as Record<string, unknown>).href) {
+          text = `<a href="${escapeHtml((value as Record<string, string>).href)}">${text}</a>`;
+        } else {
+          text = `<${tag}>${text}</${tag}>`;
+        }
+      }
+    }
+
+    html += text;
+  }
+
+  return html;
+}
 
 // Helper: Convert Yjs XmlFragment to HTML
 function yXmlFragmentToHtml(fragment: Y.XmlFragment): string {
@@ -489,7 +549,8 @@ function yXmlFragmentToHtml(fragment: Y.XmlFragment): string {
 
   fragment.forEach((item) => {
     if (item instanceof Y.XmlText) {
-      html += escapeHtml(item.toString());
+      // Use delta-based conversion to properly handle marks
+      html += xmlTextToHtml(item);
     } else if (item instanceof Y.XmlElement) {
       const tagName = item.nodeName.toLowerCase();
       const attrs = item.getAttributes();
@@ -504,7 +565,7 @@ function yXmlFragmentToHtml(fragment: Y.XmlFragment): string {
       const innerHtml = yXmlFragmentToHtml(item);
 
       // Self-closing tags
-      if (['br', 'hr', 'img'].includes(tagName)) {
+      if (['br', 'hr', 'img', 'horizontalrule', 'hardbreak'].includes(tagName)) {
         html += `<${tagName}${attrStr} />`;
       } else {
         html += `<${tagName}${attrStr}>${innerHtml}</${tagName}>`;
@@ -515,18 +576,35 @@ function yXmlFragmentToHtml(fragment: Y.XmlFragment): string {
   return html;
 }
 
+// Inline tags that should become marks on XmlText, not XmlElements
+const INLINE_MARK_TAGS = new Set(['strong', 'b', 'em', 'i', 'code', 'a', 'u', 's', 'strike', 'span']);
+
+// Map HTML inline tags to TipTap mark names
+function getMarkName(tag: string): string {
+  const markMap: Record<string, string> = {
+    'strong': 'bold',
+    'b': 'bold',
+    'em': 'italic',
+    'i': 'italic',
+    'code': 'code',
+    'a': 'link',
+    'u': 'underline',
+    's': 'strike',
+    'strike': 'strike',
+  };
+  return markMap[tag] || tag;
+}
+
 // Helper: Convert HTML to Yjs XmlFragment
 function htmlToYXmlFragment(html: string, fragment: Y.XmlFragment): void {
-  // Simple HTML parser for common elements
-  // For complex HTML, you might want to use a proper parser
-
-  // Wrap in a div if not already wrapped
+  // Wrap plain text in a paragraph if not already wrapped
   const wrappedHtml = html.trim().startsWith('<') ? html : `<p>${html}</p>`;
 
-  // Parse HTML using a simple regex-based approach
-  // This handles basic structure - for production, consider using a proper HTML parser
+  // Parse HTML into tokens
   const tokens = tokenizeHtml(wrappedHtml);
-  buildYjsFromTokens(tokens, fragment);
+
+  // Build Y.js structure with proper mark handling
+  buildYjsFromTokensV2(tokens, fragment, false);
 }
 
 interface HtmlToken {
@@ -579,19 +657,172 @@ function parseAttributes(attrString: string): Record<string, string> {
   return attrs;
 }
 
-function buildYjsFromTokens(tokens: HtmlToken[], parent: Y.XmlFragment | Y.XmlElement): void {
+// Map HTML tags to TipTap/ProseMirror node types
+function mapHtmlToTipTap(tag: string): { nodeName: string; attrs?: Record<string, unknown> } {
+  const headingMatch = tag.match(/^h([1-6])$/);
+  if (headingMatch) {
+    return { nodeName: 'heading', attrs: { level: parseInt(headingMatch[1]) } };
+  }
+
+  const mapping: Record<string, string> = {
+    'p': 'paragraph',
+    'ul': 'bulletList',
+    'ol': 'orderedList',
+    'li': 'listItem',
+    'blockquote': 'blockquote',
+    'pre': 'codeBlock',
+    'code': 'codeBlock',
+    'hr': 'horizontalRule',
+    'br': 'hardBreak',
+    'table': 'table',
+    'tr': 'tableRow',
+    'th': 'tableHeader',
+    'td': 'tableCell',
+    'img': 'image',
+    // Inline elements that should be preserved
+    'strong': 'strong',
+    'b': 'strong',
+    'em': 'em',
+    'i': 'em',
+    'a': 'a',
+    'u': 'u',
+    's': 's',
+    'strike': 's',
+  };
+
+  return { nodeName: mapping[tag] || tag };
+}
+
+// Text segment with marks for building XmlText with proper TipTap formatting
+interface TextSegment {
+  text: string;
+  marks: Record<string, unknown>[];
+}
+
+// Extract text content with marks from a range of tokens
+function extractTextWithMarks(
+  tokens: HtmlToken[],
+  startIndex: number,
+  endIndex: number,
+  currentMarks: Record<string, unknown>[] = []
+): { segments: TextSegment[]; nextIndex: number } {
+  const segments: TextSegment[] = [];
+  let i = startIndex;
+
+  while (i < endIndex) {
+    const token = tokens[i];
+
+    if (token.type === 'text') {
+      const text = token.text || '';
+      if (text) {
+        segments.push({ text, marks: [...currentMarks] });
+      }
+      i++;
+    } else if (token.type === 'open' && INLINE_MARK_TAGS.has(token.tag || '')) {
+      // This is an inline mark - add to current marks and process children
+      const markName = getMarkName(token.tag || '');
+      const mark: Record<string, unknown> = { type: markName };
+
+      // Handle link attributes
+      if (token.tag === 'a' && token.attrs?.href) {
+        mark.attrs = { href: token.attrs.href };
+      }
+
+      const closeIdx = findClosingTag(tokens, i, token.tag || '');
+      const { segments: childSegments } = extractTextWithMarks(
+        tokens,
+        i + 1,
+        closeIdx,
+        [...currentMarks, mark]
+      );
+      segments.push(...childSegments);
+      i = closeIdx + 1;
+    } else if (token.type === 'selfclose') {
+      // Handle hardBreak (br) inside text
+      if (token.tag === 'br') {
+        segments.push({ text: '\n', marks: [...currentMarks] });
+      }
+      i++;
+    } else if (token.type === 'close') {
+      // Unexpected close tag - skip
+      i++;
+    } else {
+      // Non-inline element encountered - stop extraction
+      break;
+    }
+  }
+
+  return { segments, nextIndex: i };
+}
+
+// Build XmlText with proper marks from segments
+function buildXmlTextFromSegments(segments: TextSegment[]): Y.XmlText | null {
+  if (segments.length === 0) return null;
+
+  const xmlText = new Y.XmlText();
+  let offset = 0;
+
+  for (const segment of segments) {
+    if (!segment.text) continue;
+
+    xmlText.insert(offset, segment.text);
+
+    // Apply marks as formatting attributes
+    if (segment.marks.length > 0) {
+      const attrs: Record<string, unknown> = {};
+      for (const mark of segment.marks) {
+        const markType = mark.type as string;
+        if (mark.attrs) {
+          attrs[markType] = mark.attrs;
+        } else {
+          attrs[markType] = true;
+        }
+      }
+      xmlText.format(offset, segment.text.length, attrs);
+    }
+
+    offset += segment.text.length;
+  }
+
+  return xmlText;
+}
+
+// New version that properly handles inline marks
+function buildYjsFromTokensV2(
+  tokens: HtmlToken[],
+  parent: Y.XmlFragment | Y.XmlElement,
+  isInsideBlock: boolean
+): void {
   let i = 0;
 
   while (i < tokens.length) {
     const token = tokens[i];
 
     if (token.type === 'text') {
-      const text = new Y.XmlText();
-      text.insert(0, token.text || '');
-      parent.push([text]);
+      const text = (token.text || '').replace(/^\n+|\n+$/g, ''); // Trim leading/trailing newlines
+      if (text && isInsideBlock) {
+        // Only add text if we're inside a block element
+        const xmlText = new Y.XmlText();
+        xmlText.insert(0, text);
+        parent.push([xmlText]);
+      } else if (text && !isInsideBlock) {
+        // Text at root level - wrap in paragraph
+        const para = new Y.XmlElement('paragraph');
+        const xmlText = new Y.XmlText();
+        xmlText.insert(0, text);
+        para.push([xmlText]);
+        parent.push([para]);
+      }
       i++;
     } else if (token.type === 'selfclose') {
-      const elem = new Y.XmlElement(token.tag || 'br');
+      const { nodeName, attrs: mappedAttrs } = mapHtmlToTipTap(token.tag || 'hardBreak');
+      const elem = new Y.XmlElement(nodeName);
+
+      if (mappedAttrs) {
+        for (const [key, value] of Object.entries(mappedAttrs)) {
+          elem.setAttribute(key, value);
+        }
+      }
       if (token.attrs) {
         for (const [key, value] of Object.entries(token.attrs)) {
           elem.setAttribute(key, value);
@@ -600,25 +831,58 @@ function buildYjsFromTokens(tokens: HtmlToken[], parent: Y.XmlFragment | Y.XmlEl
       parent.push([elem]);
       i++;
     } else if (token.type === 'open') {
-      const elem = new Y.XmlElement(token.tag || 'div');
+      const tag = token.tag || 'paragraph';
+
+      // Skip inline marks at this level - they should be handled inside blocks
+      if (INLINE_MARK_TAGS.has(tag)) {
+        // Find closing tag and skip
+        const closeIdx = findClosingTag(tokens, i, tag);
+        i = closeIdx + 1;
+        continue;
+      }
+
+      const { nodeName, attrs: mappedAttrs } = mapHtmlToTipTap(tag);
+      const elem = new Y.XmlElement(nodeName);
+
+      if (mappedAttrs) {
+        for (const [key, value] of Object.entries(mappedAttrs)) {
+          elem.setAttribute(key, value);
+        }
+      }
       if (token.attrs) {
         for (const [key, value] of Object.entries(token.attrs)) {
           elem.setAttribute(key, value);
         }
       }
 
-      // Find matching closing tag and process children
-      const closeIndex = findClosingTag(tokens, i, token.tag || '');
+      const closeIndex = findClosingTag(tokens, i, tag);
       const childTokens = tokens.slice(i + 1, closeIndex);
-      buildYjsFromTokens(childTokens, elem);
+
+      // For leaf blocks (paragraph, heading), extract text with inline marks
+      const leafBlocks = ['paragraph', 'heading', 'codeBlock'];
+      if (leafBlocks.includes(nodeName)) {
+        // Extract all text with marks
+        const { segments } = extractTextWithMarks(childTokens, 0, childTokens.length);
+        const xmlText = buildXmlTextFromSegments(segments);
+        if (xmlText) {
+          elem.push([xmlText]);
+        }
+      } else {
+        // For container blocks (list, blockquote), recurse
+        buildYjsFromTokensV2(childTokens, elem, nodeName === 'listItem');
+      }
 
       parent.push([elem]);
       i = closeIndex + 1;
     } else {
-      // Skip unexpected closing tags
       i++;
     }
   }
+}
+
+// Legacy function kept for reference
+function buildYjsFromTokens(tokens: HtmlToken[], parent: Y.XmlFragment | Y.XmlElement): void {
+  buildYjsFromTokensV2(tokens, parent, false);
 }
 
 function findClosingTag(tokens: HtmlToken[], openIndex: number, tagName: string): number {

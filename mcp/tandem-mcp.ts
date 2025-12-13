@@ -122,6 +122,52 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['documentId'],
         },
       },
+      {
+        name: 'tandem_sync_project',
+        description: 'Sync a local folder of markdown files to Tandem as a project. Documents will be named as "ProjectName/filename". Creates new documents or updates existing ones.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            projectName: {
+              type: 'string',
+              description: 'Name of the project (will be used as folder prefix)',
+            },
+            files: {
+              type: 'array',
+              description: 'Array of files to sync',
+              items: {
+                type: 'object',
+                properties: {
+                  filename: {
+                    type: 'string',
+                    description: 'Filename without extension (e.g., "Product-Brief")',
+                  },
+                  content: {
+                    type: 'string',
+                    description: 'Markdown content of the file',
+                  },
+                },
+                required: ['filename', 'content'],
+              },
+            },
+          },
+          required: ['projectName', 'files'],
+        },
+      },
+      {
+        name: 'tandem_list_project',
+        description: 'List all documents in a specific project (documents with "ProjectName/" prefix).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            projectName: {
+              type: 'string',
+              description: 'Name of the project to list documents for',
+            },
+          },
+          required: ['projectName'],
+        },
+      },
     ],
   };
 });
@@ -282,6 +328,120 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: 'text',
               text: `Deleted document: ${documentId}`,
+            },
+          ],
+        };
+      }
+
+      case 'tandem_sync_project': {
+        const { projectName, files } = args as {
+          projectName: string;
+          files: Array<{ filename: string; content: string }>;
+        };
+
+        const results: string[] = [];
+        let created = 0;
+        let updated = 0;
+        let failed = 0;
+
+        for (const file of files) {
+          const docId = `${projectName}/${file.filename}`;
+
+          try {
+            // Check if document exists
+            const checkResponse = await fetch(`${TANDEM_API_URL}/api/documents/${encodeURIComponent(docId)}`, {
+              headers: getAuthHeaders(),
+            });
+
+            if (checkResponse.ok) {
+              // Update existing document
+              const writeResponse = await fetch(`${TANDEM_API_URL}/api/documents/${encodeURIComponent(docId)}/content`, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...getAuthHeaders(),
+                },
+                body: JSON.stringify({ content: file.content }),
+              });
+
+              if (writeResponse.ok) {
+                updated++;
+                results.push(`✓ Updated: ${docId}`);
+              } else {
+                failed++;
+                results.push(`✗ Failed to update: ${docId}`);
+              }
+            } else {
+              // Create new document
+              const createResponse = await fetch(`${TANDEM_API_URL}/api/documents`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...getAuthHeaders(),
+                },
+                body: JSON.stringify({ title: docId }),
+              });
+
+              if (createResponse.ok) {
+                // Write content
+                const writeResponse = await fetch(`${TANDEM_API_URL}/api/documents/${encodeURIComponent(docId)}/content`, {
+                  method: 'PUT',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    ...getAuthHeaders(),
+                  },
+                  body: JSON.stringify({ content: file.content }),
+                });
+
+                if (writeResponse.ok) {
+                  created++;
+                  results.push(`✓ Created: ${docId}`);
+                } else {
+                  failed++;
+                  results.push(`✗ Created but failed to write content: ${docId}`);
+                }
+              } else {
+                failed++;
+                results.push(`✗ Failed to create: ${docId}`);
+              }
+            }
+          } catch (err) {
+            failed++;
+            results.push(`✗ Error: ${docId} - ${err}`);
+          }
+        }
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Project sync complete: ${projectName}\n\nCreated: ${created}, Updated: ${updated}, Failed: ${failed}\n\n${results.join('\n')}`,
+            },
+          ],
+        };
+      }
+
+      case 'tandem_list_project': {
+        const { projectName } = args as { projectName: string };
+
+        const response = await fetch(`${TANDEM_API_URL}/api/documents`, {
+          headers: getAuthHeaders(),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to list documents: ${response.status}`);
+        }
+
+        const allDocuments = await response.json();
+        const projectDocs = allDocuments.filter((doc: { id: string; title: string }) =>
+          doc.id.startsWith(`${projectName}/`) || doc.title.startsWith(`${projectName}/`)
+        );
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Project: ${projectName}\nDocuments: ${projectDocs.length}\n\n${JSON.stringify(projectDocs, null, 2)}`,
             },
           ],
         };

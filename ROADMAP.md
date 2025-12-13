@@ -78,6 +78,25 @@ Future improvements and features planned for Tandem.
 
 ## Completed
 
+### v1.5.0 (2025-12-10)
+- [x] Trash/Recycle bin (soft delete with recovery)
+- [x] Server-side image upload (multer)
+- [x] Global full-text search
+- [x] Document tagging and filtering
+- [x] Offline indicator
+- [x] Version history toolbar button
+
+### v1.4.0 (2025-12-10)
+- [x] Export to Markdown, HTML, PDF
+- [x] Import Markdown files
+- [x] Share menu with public/private toggle
+- [x] @ Mentions for collaborators
+
+### v1.3.0 (2025-12-08)
+- [x] MCP Server integration for AI tools
+- [x] Password authentication
+- [x] Content API for document read/write
+
 ### v1.2.0 (2025-12-07)
 - [x] Table support with resizable columns
 - [x] Code syntax highlighting (35+ languages)

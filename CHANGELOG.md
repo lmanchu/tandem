@@ -2,6 +2,31 @@
 
 All notable changes to Tandem will be documented in this file.
 
+## [1.6.0] - 2025-12-13
+
+### Added
+- **MCP Project Sync Tools** - Sync entire folders of markdown files to Tandem
+  - `tandem_sync_project` - Sync a local folder of markdown files as a project
+  - `tandem_list_project` - List all documents in a specific project
+  - Documents named with "ProjectName/filename" convention
+
+### Fixed
+- **Y.js/TipTap Compatibility** - Critical fix for REST API content sync
+  - Inline marks (bold, italic, code, links) now properly stored as XmlText attributes
+  - Fixed HTML-to-Y.js conversion to match TipTap's ProseMirror schema
+  - Documents synced via API now render correctly in the editor
+  - Eliminated "Method not implemented" errors from Y.js updates
+- **HTML Output from Y.js** - Fixed `yXmlFragmentToHtml` to use delta-based conversion
+  - Marks properly converted back to HTML tags (`<strong>`, `<em>`, etc.)
+  - No more literal `<bold>` text in output
+
+### Technical
+- Added `extractTextWithMarks()` for proper inline mark extraction
+- Added `buildXmlTextFromSegments()` to build XmlText with TipTap-compatible marks
+- Added `xmlTextToHtml()` for delta-based HTML conversion
+- Inline marks stored as `{bold: true, italic: true}` attributes on XmlText
+- Block elements use TipTap node names (paragraph, heading, bulletList, etc.)
+
 ## [1.5.0] - 2025-12-10
 
 ### Added
