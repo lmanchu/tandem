@@ -2,6 +2,18 @@
 
 All notable changes to Tandem will be documented in this file.
 
+## [1.8.1] - 2025-12-15
+
+### Fixed
+- **Table rendering** - Fixed markdown tables not appearing in Tandem
+  - Issue: `marked` produces `<thead>` and `<tbody>` wrapper tags that TipTap doesn't understand
+  - Solution: Skip `thead`/`tbody` wrappers and recurse directly into their children
+  - Also: `tableHeader` and `tableCell` now properly wrap content in paragraphs (like `listItem`)
+
+### Technical
+- `server/index.ts`: Added special handling to skip `thead`/`tbody` tags
+- `server/index.ts`: Extended `listItem` handling to also cover `tableCell` and `tableHeader`
+
 ## [1.8.0] - 2025-12-15
 
 ### Fixed

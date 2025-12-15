@@ -1153,6 +1153,15 @@ function buildYjsFromTokensV2(
         continue;
       }
 
+      // Skip thead/tbody wrapper tags - recurse directly into their children
+      if (tag === 'thead' || tag === 'tbody') {
+        const closeIdx = findClosingTag(tokens, i, tag);
+        const childTokens = tokens.slice(i + 1, closeIdx);
+        buildYjsFromTokensV2(childTokens, parent, false);
+        i = closeIdx + 1;
+        continue;
+      }
+
       const { nodeName, attrs: mappedAttrs } = mapHtmlToTipTap(tag);
       const elem = new Y.XmlElement(nodeName);
 
@@ -1179,10 +1188,10 @@ function buildYjsFromTokensV2(
         if (xmlText) {
           elem.push([xmlText]);
         }
-      } else if (nodeName === 'listItem') {
-        // ListItem can contain:
+      } else if (nodeName === 'listItem' || nodeName === 'tableCell' || nodeName === 'tableHeader') {
+        // These elements can contain:
         // 1. Simple text: <li>text</li> -> listItem > paragraph > text
-        // 2. Paragraph + nested list: <li><p>text</p><ul>...</ul></li>
+        // 2. Paragraph + nested content: <li><p>text</p><ul>...</ul></li>
         //
         // Check if children contain block elements (p, ul, ol, etc.)
         const hasBlockChildren = childTokens.some(
@@ -1193,7 +1202,7 @@ function buildYjsFromTokensV2(
           // Has block children - recurse to process them as proper blocks
           buildYjsFromTokensV2(childTokens, elem, false);
         } else {
-          // Simple text only - wrap in paragraph (TipTap requires listItem > paragraph > text)
+          // Simple text only - wrap in paragraph (TipTap requires paragraph inside these elements)
           const { segments } = extractTextWithMarks(childTokens, 0, childTokens.length);
           const xmlText = buildXmlTextFromSegments(segments);
           if (xmlText) {
