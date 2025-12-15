@@ -1,103 +1,143 @@
 # Tandem
 
-Real-time collaborative document editor with AI integration and MCP support.
+**AI Native Google Docs** — Real-time collaborative editing where every user brings their own AI agent.
 
 **Live Demo:** https://tandem.irisgo.xyz
 
-## Features
+---
 
-- **Real-time Collaboration** - Multiple users can edit documents simultaneously using Yjs CRDT
-- **Track Changes** - Accept/reject changes with visual diff highlighting
-- **Rich Text Editing** - Tables, code blocks, images, and more with TipTap
-- **AI Assistant** - Multi-provider AI (Claude, Gemini, Ollama) for document assistance
-- **Version History** - View and restore previous document versions
-- **MCP Integration** - Let AI tools directly read/write Tandem documents
-- **Export/Import** - Export to Markdown, HTML, or PDF; import Markdown files
-- **Document Sharing** - Generate shareable links with view or edit permissions
-- **@ Mentions** - Tag and notify collaborators with @ mentions
-- **Dark Mode** - Full dark theme support
-- **Electron App** - Desktop application for macOS
+## Vision
 
-## MCP Integration (Claude Code / AI Tools)
+We believe the future of collaborative documents is **multi-user + multi-agent**:
 
-Tandem includes an MCP (Model Context Protocol) server that allows AI tools like Claude Code to directly interact with your documents.
+- Each person has their own **personal AI agent** (with unique role, style, preferences)
+- Multiple agents work on the **same document simultaneously**
+- AI suggestions appear as **comments/track changes**, not direct edits — humans stay in control
+- All AI interactions happen **within the document context**, not in separate tools
 
-### Setup for Claude Code
+This isn't science fiction — [academic prototypes](https://arxiv.org/abs/2509.11826) already demonstrate this model. Tandem is building toward making it production-ready.
 
-1. **Build the MCP server:**
-   ```bash
-   cd mcp
-   npm install
-   npm run build
-   ```
+### Roadmap
 
-2. **Add to Claude Code:**
-   ```bash
-   claude mcp add tandem \
-     -s user \
-     -e TANDEM_PASSWORD=your_password \
-     -- node /path/to/tandem-3.0/mcp/dist/tandem-mcp.js
-   ```
+```
+Tandem (now)          →  AI Native Task Management  →  AI Native Slack
+collaborative docs       docs + actionable tasks       + communication layer
+```
 
-3. **Restart Claude Code** to load the MCP server.
+---
 
-### Available MCP Tools
+## Current Features
+
+### Collaboration
+- **Real-time Co-editing** — Multiple users edit simultaneously (Yjs CRDT)
+- **Track Changes** — Accept/reject changes with visual diff highlighting
+- **@ Mentions** — Tag and notify collaborators
+- **Version History** — View and restore previous versions
+- **Document Sharing** — Public/private links with view or edit permissions
+
+### Rich Editing
+- **Rich Text** — Tables, code blocks (35+ languages), images
+- **Search & Replace** — Find and replace across document
+- **Export/Import** — Markdown, HTML, PDF support
+- **Dark Mode** — Full dark theme
+
+### AI Integration
+- **AI Assistant** — Multi-provider support (Claude, Gemini, Ollama)
+- **MCP Server** — Let any AI tool (Claude Code, etc.) read/write documents directly
+- **Per-document AI context** — AI operates within document, not external
+
+---
+
+## MCP Integration (AI Tools)
+
+Tandem's MCP (Model Context Protocol) server allows AI tools to directly interact with your documents.
+
+### Quick Setup (Claude Code)
+
+```bash
+# Add Tandem MCP to Claude Code
+claude mcp add tandem \
+  -s user \
+  -e TANDEM_PASSWORD=your_password \
+  -- npx -y @tandem-hq/mcp-server-tandem \
+    --base-url https://tandem.irisgo.xyz
+```
+
+### Available Tools
 
 | Tool | Description |
 |------|-------------|
 | `tandem_list` | List all documents |
-| `tandem_read` | Read document content (returns HTML) |
-| `tandem_write` | Write/update document content |
-| `tandem_create` | Create a new document |
-| `tandem_delete` | Delete a document |
+| `tandem_read` | Read document content (HTML) |
+| `tandem_write` | Write/update document |
+| `tandem_create` | Create new document |
+| `tandem_delete` | Delete document |
+| `tandem_sync_project` | Sync entire folder to Tandem |
+| `tandem_write_from_file` | Sync large local file directly |
+| `tandem_suggest_changes` | Submit changes as Track Changes |
 
-### Copy Document Link
+### Document Links
 
-In the Tandem web UI, hover over any document and click the green **Copy** button to copy a `tandem://doc/{documentId}` link. Paste this into Claude Code to reference the document.
+Copy `tandem://doc/{documentId}` links from the UI and paste into Claude Code:
 
-Example workflow:
 ```
-User: Read tandem://doc/my-meeting-notes
-Claude: [Uses tandem_read to fetch the document content]
+User: Read tandem://doc/my-prd
+Claude: [Uses tandem_read to fetch content]
 ```
+
+---
 
 ## Development
 
 ### Prerequisites
-
 - Node.js 20+ or 22.12+
-- npm
 
-### Setup
+### Quick Start
 
 ```bash
-# Install dependencies
 npm install
-
-# Start development server
-npm run dev
-
-# Build for production
-npm run build
-
-# Start production server
-npm run start
+npm run dev      # Development
+npm run build    # Production build
+npm run start    # Production server
 ```
 
 ### Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `TANDEM_PASSWORD` | Password for authentication |
+| `TANDEM_PASSWORD` | Authentication password |
 | `PORT` | Server port (default: 3000) |
+
+---
 
 ## Tech Stack
 
 - **Frontend:** React, TipTap, Tailwind CSS, Vite
-- **Backend:** Express, Hocuspocus, Yjs
+- **Backend:** Express, Hocuspocus, Yjs (CRDT)
 - **Desktop:** Electron
 - **AI:** Claude API, Gemini API, Ollama
 - **MCP:** @modelcontextprotocol/sdk
+
+---
+
+## Why "AI Native"?
+
+Traditional approach:
+```
+User → External AI tool → Copy/paste back to doc
+```
+
+Tandem approach:
+```
+User + Personal Agent → Same document ← Other Users + Their Agents
+                              ↓
+                    AI suggestions as comments
+                    Human decides what to accept
+```
+
+The key insight: **AI should be a participant in the collaboration, not a separate tool.**
+
+---
 
 ## License
 

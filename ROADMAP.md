@@ -1,107 +1,123 @@
 # Tandem Roadmap
 
-Future improvements and features planned for Tandem.
+**Vision:** AI Native Google Docs → AI Native Task Management → AI Native Slack
 
-## Priority 1: Security
+---
 
-### Authentication
-- [ ] Add login/registration system
-- [ ] Session management with JWT or cookies
-- [ ] Protect document access with authentication
-- [ ] Share documents with specific users
+## Phase 1: Multi-Agent Collaboration (Current Focus)
 
-### Rate Limiting
-- [ ] Implement request rate limiting on API endpoints
-- [ ] Prevent abuse on public tunnel endpoint
+The core thesis: **every user brings their own AI agent to the same document.**
 
-### CORS Hardening
-- [ ] Restrict API access to allowed origins only
+### Per-User Agent Profiles
+- [ ] Agent profile system (role, style, expertise per user)
+- [ ] Agent profiles persist across documents
+- [ ] Visible indicator: "which agents are in this doc"
+- [ ] Privacy: others can request your agent's help, but can't modify your profile
 
-## Priority 2: Infrastructure & Reliability
+### Agent Interaction Modes
+- [ ] **Inline:** Select text → right-click → "Ask my PM agent to review"
+- [ ] **Comment:** `@BackendAgent check if this is implementable`
+- [ ] **Task list:** Sidebar showing pending agent tasks
 
-### Health Check Endpoint
-- [ ] Add `/health` and `/api/health` endpoints
-- [ ] Return server status, uptime, and connection count
-- [ ] Enable external monitoring integration
+### AI as Participant (not External Tool)
+- [ ] AI suggestions appear as comments/track changes
+- [ ] Human always decides what to accept
+- [ ] Full audit trail of AI contributions
+- [ ] "Agent authored" badge on changes
 
-### Log Rotation
-- [ ] Implement log file rotation to prevent disk filling
-- [ ] Configure max log size and retention period
-- [ ] Add log levels (debug, info, warn, error)
+### Research Reference
+- [Academic prototype](https://arxiv.org/abs/2509.11826) demonstrating multi-user + multi-agent collaborative editing
 
-### Crash Notifications
-- [ ] Send macOS notification when service restarts
-- [ ] Optional email/webhook alerts for downtime
+---
 
-### Resource Limits
-- [ ] Monitor memory usage
-- [ ] Graceful shutdown on memory pressure
-- [ ] Connection limits per client
+## Phase 2: AI Native Task Management
 
-## Priority 3: Features
+Extract actionable items from documents into a task layer.
 
-### PWA Support
-- [ ] Add web app manifest
-- [ ] Implement service worker for offline capability
-- [ ] Enable "Add to Home Screen" functionality
-- [ ] Cache static assets for faster loading
+### Document → Tasks
+- [ ] AI extracts action items from PRD/meeting notes
+- [ ] Tasks linked back to source paragraph
+- [ ] Assignee = user or user's agent
 
-### Mobile Optimization
-- [ ] Responsive toolbar for mobile screens
-- [ ] Touch-friendly editing controls
-- [ ] Mobile-optimized keyboard shortcuts
+### Agent Task Execution
+- [ ] Agents can work on assigned tasks autonomously
+- [ ] Results submitted as document edits (track changes)
+- [ ] Human reviews and approves
 
-### Document Export
-- [ ] Export to PDF
-- [ ] Export to Word (.docx)
-- [ ] Export to HTML
-- [ ] Export to plain Markdown
+---
 
-### Document Backup
-- [ ] Auto-backup to local storage
-- [ ] Optional cloud backup (iCloud, Dropbox, Google Drive)
-- [ ] Scheduled backup intervals
+## Phase 3: AI Native Communication (Future)
 
-## Priority 4: Developer Experience
+Add communication layer to become AI Native Slack.
 
-### Monitoring Dashboard
-- [ ] Simple status page showing service health
-- [ ] Active connections and document count
-- [ ] Recent activity log
+### Threaded Discussions
+- [ ] Comment threads with real-time sync
+- [ ] @mention users or agents
+- [ ] Agent can participate in discussions
 
-### CI/CD
-- [ ] GitHub Actions for automated testing
-- [ ] Automated builds on push
-- [ ] Release automation
+### Notifications
+- [ ] Push notifications for mentions
+- [ ] Agent activity summaries
+- [ ] Daily digest of document changes
+
+---
+
+## Infrastructure & Security
+
+### Priority 1: Security
+- [ ] User authentication (login/registration)
+- [ ] Per-document permissions (owner, editor, viewer)
+- [ ] Rate limiting on API endpoints
+- [ ] CORS hardening
+
+### Priority 2: Reliability
+- [ ] Health check endpoints (`/health`, `/api/health`)
+- [ ] Log rotation
+- [ ] Crash notifications (macOS notification, webhook)
+- [ ] Memory usage monitoring
+
+### Priority 3: Developer Experience
+- [ ] Monitoring dashboard
+- [ ] CI/CD (GitHub Actions)
+- [ ] Automated testing
 
 ---
 
 ## Completed
 
+### v1.8.x (2025-12-15)
+- [x] Pinyin document IDs for Chinese titles
+- [x] Y.js bug fixes (nested lists, tables, content duplication, links)
+- [x] Content overwrite protection
+- [x] Large file sync (`tandem_write_from_file`)
+- [x] Track Changes suggestions (`tandem_suggest_changes`)
+
+### v1.6.0 (2025-12-13)
+- [x] Project sync (sync entire folder)
+- [x] Y.js/TipTap compatibility fixes
+
 ### v1.5.0 (2025-12-10)
-- [x] Trash/Recycle bin (soft delete with recovery)
-- [x] Server-side image upload (multer)
+- [x] Trash/Recycle bin
+- [x] Server-side image upload
 - [x] Global full-text search
-- [x] Document tagging and filtering
-- [x] Offline indicator
 - [x] Version history toolbar button
 
 ### v1.4.0 (2025-12-10)
 - [x] Export to Markdown, HTML, PDF
 - [x] Import Markdown files
 - [x] Share menu with public/private toggle
-- [x] @ Mentions for collaborators
+- [x] @ Mentions
 
 ### v1.3.0 (2025-12-08)
-- [x] MCP Server integration for AI tools
+- [x] MCP Server integration
 - [x] Password authentication
-- [x] Content API for document read/write
+- [x] Content API
 
 ### v1.2.0 (2025-12-07)
-- [x] Table support with resizable columns
-- [x] Code syntax highlighting (35+ languages)
-- [x] Keyboard shortcuts modal (Cmd+/)
-- [x] Search and replace (Cmd+F)
+- [x] Table support
+- [x] Code syntax highlighting
+- [x] Keyboard shortcuts modal
+- [x] Search and replace
 
 ### v1.1.0 (2025-12-07)
 - [x] AI Assistant (Claude, Gemini, Ollama)
@@ -111,13 +127,12 @@ Future improvements and features planned for Tandem.
 - [x] Collaborator display
 
 ### v1.0.0
-- [x] Real-time collaborative editing
+- [x] Real-time collaborative editing (Yjs)
 - [x] Track Changes
-- [x] Rich text editing
+- [x] Rich text editing (TipTap)
 - [x] Dark mode
 - [x] Electron desktop app
-- [x] Markdown import/export
 
 ### Infrastructure
-- [x] Launchd services for auto-restart (2025-12-07)
+- [x] Launchd services for auto-restart
 - [x] Cloudflare Tunnel for public access
