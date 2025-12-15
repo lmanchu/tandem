@@ -2,6 +2,17 @@
 
 All notable changes to Tandem will be documented in this file.
 
+## [1.8.2] - 2025-12-15
+
+### Fixed
+- **Content duplication bug** - Fixed Y.js CRDT merge causing document content to appear twice
+  - Issue: When browser reconnects with cached Y.js state after API content update, Y.js merges both states as separate operations, resulting in duplicated content
+  - Root cause: Y.js treats browser cache and server file as different "clients" with different internal IDs
+  - Solution: Clear existing fragment content in `onLoadDocument` before applying stored state to prevent CRDT merge duplication
+
+### Technical
+- `server/index.ts`: Added fragment clearing logic in `onLoadDocument` to handle browser cache conflicts
+
 ## [1.8.1] - 2025-12-15
 
 ### Fixed

@@ -1504,6 +1504,14 @@ const hocuspocus = new Hocuspocus({
         console.log(`Loading document from: ${trackFilePath}`);
 
         if (data.yDocState && data.yDocState.length > 0) {
+          // Clear any existing content in the fragment first to prevent CRDT merge duplication
+          // This is important when browser has cached state that differs from server
+          const fragment = document.getXmlFragment('default');
+          if (fragment.length > 0) {
+            console.log(`Clearing existing fragment content (${fragment.length} items) before loading stored state`);
+            fragment.delete(0, fragment.length);
+          }
+
           const state = new Uint8Array(data.yDocState);
           Y.applyUpdate(document, state);
         }
