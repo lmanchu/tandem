@@ -1,6 +1,6 @@
 {
   "name": "@tandem-hq/mcp-server-tandem",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "MCP Server for Tandem document operations",
   "type": "module",
   "main": "dist/tandem-mcp.js",

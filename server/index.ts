@@ -754,19 +754,33 @@ app.put('/api/documents/:id/content', requireAuth, (req, res) => {
       return res.status(404).json({ error: 'Document not found' });
     }
 
-    const { content } = req.body;
+    const { content, format } = req.body as { content: string; format?: 'markdown' | 'html' | 'auto' };
     if (typeof content !== 'string') {
       return res.status(400).json({ error: 'Content must be a string' });
     }
 
     const data = JSON.parse(fs.readFileSync(trackFilePath, 'utf-8')) as TrackFileData;
 
-    // Detect if content is markdown or HTML
-    // Markdown typically starts with # or doesn't start with <
-    const isMarkdown = !content.trim().startsWith('<') || content.trim().startsWith('#');
+    // Determine format: explicit > auto-detect
+    let isMarkdown: boolean;
+    if (format === 'markdown') {
+      isMarkdown = true;
+    } else if (format === 'html') {
+      isMarkdown = false;
+    } else {
+      // Auto-detect: improved heuristics
+      const trimmed = content.trim();
+      // Check for markdown indicators
+      const hasMarkdownHeading = /^#{1,6}\s/.test(trimmed);
+      const hasMarkdownList = /^[-*+]\s|^\d+\.\s/m.test(trimmed);
+      const hasMarkdownCode = /^```/m.test(trimmed);
+      const startsWithHtmlTag = /^<[a-z][\s\S]*>/i.test(trimmed);
+
+      isMarkdown = hasMarkdownHeading || hasMarkdownList || hasMarkdownCode || !startsWithHtmlTag;
+    }
     const htmlContent = isMarkdown ? marked.parse(content) as string : content;
 
-    console.log(`Writing content to ${req.params.id}, isMarkdown: ${isMarkdown}, htmlLength: ${htmlContent.length}`);
+    console.log(`Writing content to ${req.params.id}, format: ${format || 'auto'}, detected: ${isMarkdown ? 'markdown' : 'html'}, htmlLength: ${htmlContent.length}`);
 
     // Create new Yjs doc with the HTML content
     // TipTap Collaboration extension uses 'default' field by default

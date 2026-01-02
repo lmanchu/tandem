@@ -2,6 +2,26 @@
 
 All notable changes to Tandem will be documented in this file.
 
+## [1.10.0] - 2026-01-02
+
+### Added
+- **tandem_write format parameter** - Explicitly specify content format
+  - `format: "markdown"` - Force markdown parsing
+  - `format: "html"` - Use content as-is
+  - `format: "auto"` - Auto-detect (default, improved heuristics)
+- **tandem_write append mode** - Add content to end of document
+  - `mode: "append"` - Append to existing content
+  - `mode: "replace"` - Overwrite content (default)
+
+### Improved
+- **Format auto-detection** - Better heuristics for markdown vs HTML
+  - Detects markdown headings (`# `), lists (`- `, `1. `), code blocks (```)
+  - Falls back to HTML only if content starts with `<tag>`
+
+### Technical
+- `mcp/tandem-mcp.ts`: Added `format` and `mode` parameters to `tandem_write`
+- `server/index.ts`: Updated PUT /api/documents/:id/content to accept `format` parameter
+
 ## [1.9.0] - 2026-01-02
 
 ### Added

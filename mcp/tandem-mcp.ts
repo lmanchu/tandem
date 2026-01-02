@@ -37,7 +37,7 @@ function getAuthHeaders(): Record<string, string> {
 const server = new Server(
   {
     name: 'tandem-mcp',
-    version: '1.9.0',
+    version: '1.10.0',
   },
   {
     capabilities: {
@@ -86,6 +86,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             content: {
               type: 'string',
               description: 'The content to write (Markdown or HTML)',
+            },
+            format: {
+              type: 'string',
+              enum: ['markdown', 'html', 'auto'],
+              description: 'Content format: "markdown", "html", or "auto" (default: auto-detect)',
+            },
+            mode: {
+              type: 'string',
+              enum: ['replace', 'append'],
+              description: 'Write mode: "replace" overwrites content, "append" adds to end (default: replace)',
             },
           },
           required: ['documentId', 'content'],
@@ -294,7 +304,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'tandem_write': {
-        const { documentId, content } = args as { documentId: string; content: string };
+        const { documentId, content, format, mode } = args as {
+          documentId: string;
+          content: string;
+          format?: 'markdown' | 'html' | 'auto';
+          mode?: 'replace' | 'append';
+        };
+
+        let finalContent = content;
+
+        // Handle append mode - read existing content first
+        if (mode === 'append') {
+          const readResponse = await fetch(`${TANDEM_API_URL}/api/documents/${documentId}/content`, {
+            headers: getAuthHeaders(),
+          });
+
+          if (readResponse.ok) {
+            const data = await readResponse.json();
+            const existingContent = data.content || '';
+            // Append with newline separator
+            finalContent = existingContent + '\n\n' + content;
+          }
+          // If document doesn't exist, just use the new content
+        }
 
         const response = await fetch(`${TANDEM_API_URL}/api/documents/${documentId}/content`, {
           method: 'PUT',
@@ -302,7 +334,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             'Content-Type': 'application/json',
             ...getAuthHeaders(),
           },
-          body: JSON.stringify({ content }),
+          body: JSON.stringify({
+            content: finalContent,
+            format: format || 'auto',
+          }),
         });
 
         if (!response.ok) {
@@ -312,11 +347,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           throw new Error(`Failed to write document: ${response.status}`);
         }
 
+        const modeText = mode === 'append' ? 'appended to' : 'updated';
         return {
           content: [
             {
               type: 'text',
-              text: `Successfully updated document: ${documentId}`,
+              text: `Successfully ${modeText} document: ${documentId}`,
             },
           ],
         };
